@@ -208,10 +208,10 @@ const App: React.FC = () => {
       {/* Mobile Nav Bar */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Flow</span>
+            <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Home</span>
         </button>
         <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">📁</span><span className="text-[10px] font-bold">Docs</span>
+            <span className="text-xl">📁</span><span className="text-[10px] font-bold">Projects</span>
         </button>
         <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">📅</span><span className="text-[10px] font-bold">Cal</span>
