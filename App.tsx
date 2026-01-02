@@ -83,8 +83,11 @@ const App: React.FC = () => {
     if (!error) setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj));
   };
 
-  const totalPendingTasks = projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0);
-  const completedProjects = projects.filter(p => p.tasks.length > 0 && p.tasks.every(t => t.isCompleted)).length;
+  // --- RESTORED DASHBOARD LOGIC ---
+  const totalTasksCount = projects.reduce((acc, p) => acc + p.tasks.length, 0);
+  const tasksCompletedCount = projects.reduce((acc, p) => acc + p.tasks.filter(t => t.isCompleted).length, 0);
+  const tasksIncompleteCount = projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0);
+
   const activeP = projects.find(p => p.id === selectedProjectId);
 
   return (
@@ -98,7 +101,7 @@ const App: React.FC = () => {
           ))}
         </nav>
         <div className="mt-4 overflow-y-auto">
-          <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 px-2 tracking-widest">Quick Access</h3>
+          <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 px-2">Quick Access</h3>
           {projects.map(p => (
             <button key={p.id} onClick={() => { setSelectedProjectId(p.id); setActiveView('projects'); }} className="block w-full text-left p-2 text-sm text-slate-400 hover:text-white truncate">
               <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: p.color }}></span>{p.name}
@@ -110,42 +113,39 @@ const App: React.FC = () => {
       {/* Mobile Header */}
       <header className="lg:hidden p-4 border-b border-white/5 flex justify-between items-center bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-40">
         <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
-        <div className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> {lastSynced.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </div>
+        <div className="text-[10px] text-emerald-400 font-mono">LIVE SYNC</div>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 p-4 lg:p-10 overflow-y-auto">
         {activeView === 'dashboard' && (
           <div className="space-y-8">
+            {/* STATS ROW */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 shadow-sm">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Pending Tasks</h4>
-                <p className="text-3xl font-bold mt-1 tracking-tight">{totalPendingTasks}</p>
-              </div>
-              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 shadow-sm">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Active Projects</h4>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total Projects</h4>
                 <p className="text-3xl font-bold mt-1 tracking-tight">{projects.length}</p>
               </div>
-              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 shadow-sm">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Completed</h4>
-                <p className="text-3xl font-bold mt-1 tracking-tight text-emerald-400">{completedProjects}</p>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Completed Tasks</h4>
+                <p className="text-3xl font-bold mt-1 tracking-tight text-emerald-400">{tasksCompletedCount}</p>
               </div>
-              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 shadow-sm">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days to Year End</h4>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Pending Tasks</h4>
+                <p className="text-3xl font-bold mt-1 tracking-tight text-rose-400">{tasksIncompleteCount}</p>
+              </div>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days in Year</h4>
                 <p className="text-3xl font-bold mt-1 tracking-tight text-orange-400">{daysRemainingInYear()}</p>
               </div>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {projects.map(p => p.tasks.filter(t => !t.isCompleted).length > 0 && (
-                <div key={p.id} className="bg-white/5 p-6 rounded-2xl border border-white/10 transition-colors hover:bg-white/[0.07]">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span> {p.name}
-                    </h3>
-                  </div>
+                <div key={p.id} className="bg-white/5 p-6 rounded-2xl border border-white/10">
+                  <h3 className="font-bold mb-4 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span> {p.name}
+                  </h3>
                   <div className="space-y-2">
                     {p.tasks.filter(t => !t.isCompleted).slice(0, 3).map(t => (
                       <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
@@ -161,21 +161,17 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto">
             {activeP ? (
               <div className="space-y-6 pb-24 lg:pb-0">
-                <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400 h-auto hover:bg-transparent">← Back to All Projects</Button>
-                <div className="flex items-center gap-4">
-                    <div className="w-3 h-10 rounded-full" style={{ backgroundColor: activeP.color }}></div>
-                    <h2 className="text-3xl lg:text-4xl font-bold">{activeP.name}</h2>
-                </div>
+                <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400">← Back</Button>
+                <h2 className="text-3xl lg:text-4xl font-bold">{activeP.name}</h2>
                 <div className="space-y-2 mt-6">
                   {activeP.tasks.map(t => <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />)}
                 </div>
-                {/* Mobile Add Task Bar */}
-                <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900/95 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-md">
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-orange-500/50" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Type task here..." />
+                <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task name..." />
                     <div className="flex gap-2">
-                        <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
-                        <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
+                      <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
+                      <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
                     </div>
                   </div>
                 </div>
@@ -183,16 +179,13 @@ const App: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {projects.map(p => (
-                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 p-6 rounded-3xl border border-white/10 text-left hover:border-orange-500/30 transition-all group">
-                    <div className="w-10 h-10 rounded-2xl mb-4 shadow-lg group-hover:scale-105 transition-transform" style={{ backgroundColor: p.color }}></div>
-                    <h3 className="font-bold text-xl mb-1">{p.name}</h3>
-                    <p className="text-slate-500 text-xs">{p.tasks.filter(t => !t.isCompleted).length} pending tasks</p>
+                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 p-6 rounded-3xl border border-white/10 text-left hover:border-orange-500/30 transition-all">
+                    <div className="w-10 h-10 rounded-2xl mb-4" style={{ backgroundColor: p.color }}></div>
+                    <h3 className="font-bold text-xl">{p.name}</h3>
+                    <p className="text-slate-500 text-xs">{p.tasks.filter(t => !t.isCompleted).length} pending</p>
                   </button>
                 ))}
-                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/5 p-6 rounded-3xl text-slate-500 hover:text-white transition-all flex flex-col items-center justify-center gap-2">
-                  <span className="text-3xl">+</span>
-                  <span className="text-xs font-bold uppercase">New Project</span>
-                </button>
+                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/5 p-6 rounded-3xl text-slate-500 flex flex-col items-center justify-center gap-2">+ New Project</button>
               </div>
             )}
           </div>
@@ -202,47 +195,43 @@ const App: React.FC = () => {
         {activeView === 'chat' && (
           <div className="max-w-3xl mx-auto flex flex-col h-[65vh] lg:h-[70vh] bg-black/20 rounded-3xl border border-white/10 p-4">
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
-              {chatHistory.map(m => <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`p-4 rounded-2xl max-w-[85%] text-sm leading-relaxed ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>{m.text}</div></div>)}
+              {chatHistory.map(m => <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>{m.text}</div></div>)}
             </div>
-            <div className="flex gap-2 bg-black/40 p-2 rounded-2xl border border-white/5">
-              <input className="flex-1 bg-transparent px-3 outline-none text-sm" placeholder="Ask AI..." value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} />
-              <Button className="bg-orange-600 rounded-xl" onClick={handleSendMessage}>Send</Button>
+            <div className="flex gap-2">
+              <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none" placeholder="Ask AI..." value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} />
+              <Button className="bg-orange-600" onClick={handleSendMessage}>Send</Button>
             </div>
           </div>
         )}
       </main>
 
       {/* Mobile Nav Bar */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-        <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 transition-colors ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
+        <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Flow</span>
         </button>
-        <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 transition-colors ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>
+        <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">📁</span><span className="text-[10px] font-bold">Docs</span>
         </button>
-        <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 transition-colors ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>
+        <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">📅</span><span className="text-[10px] font-bold">Cal</span>
         </button>
-        <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 transition-colors ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>
+        <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">🤖</span><span className="text-[10px] font-bold">AI</span>
         </button>
       </nav>
 
       {/* Project Modal */}
       {isAddingProject && (
-        <div className="fixed inset-0 bg-[#0f172a]/90 backdrop-blur-md flex items-center justify-center p-6 z-[100]">
-          <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10 shadow-2xl">
-            <h3 className="text-2xl font-bold mb-6">New Project</h3>
-            <div className="space-y-6">
-                <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 outline-none focus:border-orange-500" placeholder="Project Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
-                <div className="flex justify-between px-2">
-                {PROJECT_COLORS.map(c => <button key={c.hex} onClick={() => setNewProject({...newProject, color: c.hex})} className={`w-8 h-8 rounded-full transition-all ${newProject.color === c.hex ? 'ring-4 ring-white scale-110' : 'opacity-40 hover:opacity-100'}`} style={{ backgroundColor: c.hex }} />)}
-                </div>
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
+          <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
+            <h3 className="text-2xl font-bold mb-4">New Project</h3>
+            <input className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 mb-4 outline-none" placeholder="Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
+            <div className="flex justify-between mb-8 px-2">
+                {PROJECT_COLORS.map(c => <button key={c.hex} onClick={() => setNewProject({...newProject, color: c.hex})} className={`w-8 h-8 rounded-full ${newProject.color === c.hex ? 'ring-4 ring-white scale-110' : 'opacity-40'}`} style={{ backgroundColor: c.hex }} />)}
             </div>
-            <div className="mt-10 flex flex-col gap-2">
-                <Button className="w-full bg-orange-600 py-4 rounded-2xl font-bold" onClick={addProject}>Create Project</Button>
-                <Button variant="ghost" onClick={() => setIsAddingProject(false)}>Cancel</Button>
-            </div>
+            <Button className="w-full bg-orange-600 py-4 font-bold" onClick={addProject}>Create Project</Button>
+            <Button variant="ghost" className="w-full mt-2" onClick={() => setIsAddingProject(false)}>Cancel</Button>
           </div>
         </div>
       )}
@@ -251,4 +240,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-commit changes
