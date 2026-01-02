@@ -1,4 +1,3 @@
-
 export interface Task {
   id: string;
   projectId: string;
@@ -6,7 +5,6 @@ export interface Task {
   isCompleted: boolean;
   dueDate: string;
   completedDate?: string;
-  description?: string;
 }
 
 export interface Project {
@@ -14,21 +12,15 @@ export interface Project {
   name: string;
   description: string;
   color: string;
-  tasks: Task[];
   createdAt: string;
+  tasks: Task[];
 }
+
+export type ViewType = 'dashboard' | 'projects' | 'calendar' | 'chat';
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
   text: string;
   timestamp: string;
-}
-
-export type ViewType = 'dashboard' | 'projects' | 'calendar' | 'all-tasks' | 'completed-tasks' | 'chat';
-
-export interface AIProjectSuggestion {
-  title: string;
-  description: string;
-  dueDateOffsetDays: number;
 }
