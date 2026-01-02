@@ -14,6 +14,7 @@ const App: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDate, setNewTaskDate] = useState(new Date().toISOString().split('T')[0]);
   const [newProject, setNewProject] = useState({ name: '', description: '', color: PROJECT_COLORS[0].hex });
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -61,7 +62,7 @@ const App: React.FC = () => {
   const addTask = async (pid: string) => {
     const p = projects.find(p => p.id === pid);
     if (!p || !newTaskTitle) return;
-    const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: new Date().toISOString().split('T')[0] }];
+    const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate }];
     const { error } = await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
     if (!error) { setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj)); setNewTaskTitle(''); }
   };
@@ -94,7 +95,7 @@ const App: React.FC = () => {
           ))}
         </nav>
         <div className="mt-4 overflow-y-auto">
-          <h3 className="text-xs font-bold text-slate-500 uppercase mb-4">Projects</h3>
+          <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 px-2">Shortcut</h3>
           {projects.map(p => (
             <button key={p.id} onClick={() => { setSelectedProjectId(p.id); setActiveView('projects'); }} className="block w-full text-left p-2 text-sm text-slate-400 hover:text-white truncate">
               <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: p.color }}></span>{p.name}
@@ -105,14 +106,32 @@ const App: React.FC = () => {
 
       <main className="flex-1 p-6 lg:p-10">
         {activeView === 'dashboard' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
-              <h4 className="text-slate-400 text-xs font-bold uppercase">Pending Tasks</h4>
-              <p className="text-4xl font-bold mt-2">{projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0)}</p>
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
+                <h4 className="text-slate-400 text-xs font-bold uppercase">Pending Tasks</h4>
+                <p className="text-4xl font-bold mt-2">{projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0)}</p>
+              </div>
+              <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
+                <h4 className="text-slate-400 text-xs font-bold uppercase">Year Countdown</h4>
+                <p className="text-4xl font-bold mt-2 text-orange-400">{daysRemainingInYear()} Days</p>
+              </div>
             </div>
-            <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
-              <h4 className="text-slate-400 text-xs font-bold uppercase">Year Countdown</h4>
-              <p className="text-4xl font-bold mt-2 text-orange-400">{daysRemainingInYear()} Days</p>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {projects.map(p => p.tasks.filter(t => !t.isCompleted).length > 0 && (
+                <div key={p.id} className="bg-white/5 p-6 rounded-2xl border border-white/10">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }}></div>
+                    <h3 className="font-bold">{p.name}</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {p.tasks.filter(t => !t.isCompleted).slice(0, 3).map(t => (
+                      <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -123,28 +142,34 @@ const App: React.FC = () => {
               <div className="space-y-6">
                 <Button variant="ghost" onClick={() => setSelectedProjectId(null)}>← Back</Button>
                 <h2 className="text-3xl font-bold">{activeP.name}</h2>
-                {activeP.tasks.map(t => <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />)}
-                <div className="flex gap-2 mt-4">
-                  <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
-                  <Button onClick={() => addTask(activeP.id)}>Add</Button>
+                <div className="space-y-2">
+                  {activeP.tasks.map(t => <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />)}
+                </div>
+                <div className="bg-white/5 p-4 rounded-xl border border-white/10 mt-8">
+                  <p className="text-xs font-bold text-slate-500 uppercase mb-3">Add New Task</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="What needs to be done?" />
+                    <input type="date" className="bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-sm" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
+                    <Button onClick={() => addTask(activeP.id)}>Add Task</Button>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {projects.map(p => (
-                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 p-6 rounded-2xl border border-white/10 text-left">
+                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 p-6 rounded-2xl border border-white/10 text-left hover:bg-white/10 transition-all">
                     <div className="w-8 h-8 rounded-lg mb-4" style={{ backgroundColor: p.color }}></div>
                     <h3 className="font-bold text-lg">{p.name}</h3>
+                    <p className="text-slate-400 text-sm mt-1">{p.tasks.length} tasks</p>
                   </button>
                 ))}
-                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/10 p-6 rounded-2xl">+ New Project</button>
+                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/10 p-6 rounded-2xl text-slate-500 hover:text-white transition-all">+ New Project</button>
               </div>
             )}
           </div>
         )}
 
         {activeView === 'calendar' && <Calendar projects={projects} />}
-
         {activeView === 'chat' && (
           <div className="max-w-2xl mx-auto flex flex-col h-[60vh] bg-black/20 rounded-2xl border border-white/10 p-4">
             <div className="flex-1 overflow-y-auto space-y-4 mb-4">
@@ -160,7 +185,7 @@ const App: React.FC = () => {
 
       {isAddingProject && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 p-8 rounded-3xl w-full max-w-md border border-white/10">
+          <div className="bg-slate-900 p-8 rounded-3xl w-full max-w-md border border-white/10 shadow-2xl">
             <h3 className="text-xl font-bold mb-4">New Project</h3>
             <input className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 mb-4" placeholder="Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
             <div className="flex gap-2 mb-6">
