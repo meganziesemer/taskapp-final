@@ -83,6 +83,10 @@ const App: React.FC = () => {
     if (!error) setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj));
   };
 
+  // --- Dashboard Logic ---
+  const totalPendingTasks = projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0);
+  const completedProjects = projects.filter(p => p.tasks.length > 0 && p.tasks.every(t => t.isCompleted)).length;
+
   const activeP = projects.find(p => p.id === selectedProjectId);
 
   return (
@@ -95,7 +99,7 @@ const App: React.FC = () => {
           ))}
         </nav>
         <div className="mt-4 overflow-y-auto">
-          <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 px-2">Shortcut</h3>
+          <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 px-2">Quick Nav</h3>
           {projects.map(p => (
             <button key={p.id} onClick={() => { setSelectedProjectId(p.id); setActiveView('projects'); }} className="block w-full text-left p-2 text-sm text-slate-400 hover:text-white truncate">
               <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: p.color }}></span>{p.name}
@@ -107,23 +111,34 @@ const App: React.FC = () => {
       <main className="flex-1 p-6 lg:p-10">
         {activeView === 'dashboard' && (
           <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
-                <h4 className="text-slate-400 text-xs font-bold uppercase">Pending Tasks</h4>
-                <p className="text-4xl font-bold mt-2">{projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0)}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Pending Tasks</h4>
+                <p className="text-3xl font-bold mt-1">{totalPendingTasks}</p>
               </div>
-              <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
-                <h4 className="text-slate-400 text-xs font-bold uppercase">Year Countdown</h4>
-                <p className="text-4xl font-bold mt-2 text-orange-400">{daysRemainingInYear()} Days</p>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total Projects</h4>
+                <p className="text-3xl font-bold mt-1">{projects.length}</p>
+              </div>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Completed Projects</h4>
+                <p className="text-3xl font-bold mt-1 text-emerald-400">{completedProjects}</p>
+              </div>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days to Year End</h4>
+                <p className="text-3xl font-bold mt-1 text-orange-400">{daysRemainingInYear()}</p>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {projects.map(p => p.tasks.filter(t => !t.isCompleted).length > 0 && (
                 <div key={p.id} className="bg-white/5 p-6 rounded-2xl border border-white/10">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }}></div>
-                    <h3 className="font-bold">{p.name}</h3>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
+                        {p.name}
+                    </h3>
+                    <span className="text-[10px] text-slate-500">{p.tasks.filter(t => !t.isCompleted).length} Left</span>
                   </div>
                   <div className="space-y-2">
                     {p.tasks.filter(t => !t.isCompleted).slice(0, 3).map(t => (
@@ -140,30 +155,36 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto">
             {activeP ? (
               <div className="space-y-6">
-                <Button variant="ghost" onClick={() => setSelectedProjectId(null)}>← Back</Button>
-                <h2 className="text-3xl font-bold">{activeP.name}</h2>
-                <div className="space-y-2">
+                <Button variant="ghost" onClick={() => setSelectedProjectId(null)}>← All Projects</Button>
+                <div className="flex items-center gap-4">
+                    <div className="w-4 h-12 rounded-full" style={{ backgroundColor: activeP.color }}></div>
+                    <h2 className="text-4xl font-bold">{activeP.name}</h2>
+                </div>
+                <div className="space-y-2 mt-8">
                   {activeP.tasks.map(t => <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />)}
                 </div>
-                <div className="bg-white/5 p-4 rounded-xl border border-white/10 mt-8">
-                  <p className="text-xs font-bold text-slate-500 uppercase mb-3">Add New Task</p>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="What needs to be done?" />
-                    <input type="date" className="bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-sm" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
-                    <Button onClick={() => addTask(activeP.id)}>Add Task</Button>
+                <div className="bg-white/5 p-6 rounded-2xl border border-white/10 mt-10">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Add Task</p>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-orange-500/50 transition-colors" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Type task here..." />
+                    <input type="date" className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
+                    <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {projects.map(p => (
-                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 p-6 rounded-2xl border border-white/10 text-left hover:bg-white/10 transition-all">
-                    <div className="w-8 h-8 rounded-lg mb-4" style={{ backgroundColor: p.color }}></div>
-                    <h3 className="font-bold text-lg">{p.name}</h3>
-                    <p className="text-slate-400 text-sm mt-1">{p.tasks.length} tasks</p>
+                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 p-6 rounded-3xl border border-white/10 text-left hover:border-orange-500/30 transition-all group">
+                    <div className="w-10 h-10 rounded-2xl mb-6 shadow-lg group-hover:scale-110 transition-transform" style={{ backgroundColor: p.color }}></div>
+                    <h3 className="font-bold text-xl mb-1">{p.name}</h3>
+                    <p className="text-slate-500 text-xs">{p.tasks.length} Total Tasks</p>
                   </button>
                 ))}
-                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/10 p-6 rounded-2xl text-slate-500 hover:text-white transition-all">+ New Project</button>
+                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/5 p-6 rounded-3xl text-slate-600 hover:text-slate-400 hover:border-white/10 transition-all flex flex-col items-center justify-center gap-2">
+                  <span className="text-3xl">+</span>
+                  <span className="text-sm font-bold uppercase tracking-tighter">New Project</span>
+                </button>
               </div>
             )}
           </div>
@@ -171,33 +192,37 @@ const App: React.FC = () => {
 
         {activeView === 'calendar' && <Calendar projects={projects} />}
         {activeView === 'chat' && (
-          <div className="max-w-2xl mx-auto flex flex-col h-[60vh] bg-black/20 rounded-2xl border border-white/10 p-4">
-            <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-              {chatHistory.map(m => <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`p-3 rounded-xl max-w-[80%] ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/10'}`}>{m.text}</div></div>)}
+          <div className="max-w-3xl mx-auto flex flex-col h-[70vh] bg-black/20 rounded-3xl border border-white/10 p-6">
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
+              {chatHistory.map(m => <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`p-4 rounded-2xl max-w-[85%] leading-relaxed ${m.role === 'user' ? 'bg-orange-600 shadow-lg shadow-orange-900/20' : 'bg-white/5 border border-white/10'}`}>{m.text}</div></div>)}
             </div>
-            <div className="flex gap-2">
-              <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} />
-              <Button onClick={handleSendMessage}>Send</Button>
+            <div className="flex gap-2 bg-black/40 p-2 rounded-2xl border border-white/5">
+              <input className="flex-1 bg-transparent px-4 outline-none" placeholder="Ask anything about your tasks..." value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} />
+              <Button className="bg-orange-600 rounded-xl" onClick={handleSendMessage}>Send</Button>
             </div>
           </div>
         )}
       </main>
 
       {isAddingProject && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 p-8 rounded-3xl w-full max-w-md border border-white/10 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4">New Project</h3>
-            <input className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 mb-4" placeholder="Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
-            <div className="flex gap-2 mb-6">
-              {PROJECT_COLORS.map(c => <button key={c.hex} onClick={() => setNewProject({...newProject, color: c.hex})} className={`w-8 h-8 rounded-full ${newProject.color === c.hex ? 'ring-2 ring-white' : ''}`} style={{ backgroundColor: c.hex }} />)}
+        <div className="fixed inset-0 bg-[#0f172a]/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-md border border-white/10 shadow-2xl">
+            <h3 className="text-2xl font-bold mb-6">New Project</h3>
+            <div className="space-y-6">
+                <input className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 outline-none focus:border-orange-500" placeholder="Project Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
+                <div className="flex justify-between px-2">
+                {PROJECT_COLORS.map(c => <button key={c.hex} onClick={() => setNewProject({...newProject, color: c.hex})} className={`w-8 h-8 rounded-full transition-all ${newProject.color === c.hex ? 'ring-4 ring-white scale-110' : 'opacity-40 hover:opacity-100'}`} style={{ backgroundColor: c.hex }} />)}
+                </div>
             </div>
-            <Button className="w-full bg-orange-600" onClick={addProject}>Create</Button>
-            <Button variant="ghost" className="w-full mt-2" onClick={() => setIsAddingProject(false)}>Cancel</Button>
+            <div className="mt-10 flex flex-col gap-2">
+                <Button className="w-full bg-orange-600 py-4 rounded-2xl text-lg font-bold" onClick={addProject}>Create Project</Button>
+                <Button variant="ghost" onClick={() => setIsAddingProject(false)}>Maybe Later</Button>
+            </div>
           </div>
         </div>
       )}
-      <div className="fixed bottom-4 right-4 bg-slate-900/80 px-4 py-2 rounded-full border border-white/10 text-[10px] font-bold text-emerald-400">
-        ● CLOUD SYNCED: {lastSynced.toLocaleTimeString()}
+      <div className="fixed bottom-6 right-6 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20 text-[10px] font-bold text-emerald-400 backdrop-blur-md">
+        ● LIVE SYNC ACTIVE
       </div>
     </div>
   );
