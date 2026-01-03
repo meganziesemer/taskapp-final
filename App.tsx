@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date>(new Date());
+  const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
 
   const daysRemainingInYear = () => {
     const today = new Date();
@@ -59,9 +60,19 @@ const App: React.FC = () => {
     if (!error) { setProjects(prev => [project, ...prev]); setIsAddingProject(false); setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); }
   };
 
+  const deleteProject = async (pid: string) => {
+    if (!window.confirm("Delete this entire project and all tasks?")) return;
+    const { error } = await supabase.from('projects').delete().eq('id', pid);
+    if (!error) {
+      setProjects(prev => prev.filter(p => p.id !== pid));
+      setSelectedProjectId(null);
+    }
+  };
+
   const addTask = async (pid: string) => {
     const p = projects.find(p => p.id === pid);
     if (!p || !newTaskTitle) return;
+    // Fix: Using the literal date string avoids timezone shifting
     const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate }];
     const { error } = await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
     if (!error) { setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj)); setNewTaskTitle(''); }
@@ -83,16 +94,14 @@ const App: React.FC = () => {
     if (!error) setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj));
   };
 
-  // --- RESTORED DASHBOARD LOGIC ---
   const totalTasksCount = projects.reduce((acc, p) => acc + p.tasks.length, 0);
   const tasksCompletedCount = projects.reduce((acc, p) => acc + p.tasks.filter(t => t.isCompleted).length, 0);
   const tasksIncompleteCount = projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0);
-
   const activeP = projects.find(p => p.id === selectedProjectId);
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#0f172a] text-white font-sans pb-20 lg:pb-0">
-      {/* Sidebar (Desktop) */}
+      {/* Sidebar Desktop */}
       <aside className="hidden lg:flex w-72 bg-black/20 p-6 flex-col gap-8 border-r border-white/5">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
         <nav className="flex flex-col gap-2">
@@ -100,43 +109,32 @@ const App: React.FC = () => {
             <Button key={v} variant="ghost" onClick={() => {setActiveView(v as ViewType); setSelectedProjectId(null);}} className={`justify-start capitalize ${activeView === v ? 'bg-orange-600' : ''}`}>{v}</Button>
           ))}
         </nav>
-        <div className="mt-4 overflow-y-auto">
-          <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 px-2">Quick Access</h3>
-          {projects.map(p => (
-            <button key={p.id} onClick={() => { setSelectedProjectId(p.id); setActiveView('projects'); }} className="block w-full text-left p-2 text-sm text-slate-400 hover:text-white truncate">
-              <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: p.color }}></span>{p.name}
-            </button>
-          ))}
-        </div>
       </aside>
 
-      {/* Mobile Header */}
-      <header className="lg:hidden p-4 border-b border-white/5 flex justify-between items-center bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-40">
+      <header className="lg:hidden p-4 border-b border-white/5 bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-40 flex justify-between items-center">
         <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
-        <div className="text-[10px] text-emerald-400 font-mono">LIVE SYNC</div>
+        <div className="text-[10px] text-emerald-400">SYNCED</div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 p-4 lg:p-10 overflow-y-auto">
         {activeView === 'dashboard' && (
           <div className="space-y-8">
-            {/* STATS ROW */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
                 <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total Projects</h4>
-                <p className="text-3xl font-bold mt-1 tracking-tight">{projects.length}</p>
+                <p className="text-3xl font-bold mt-1">{projects.length}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Completed Tasks</h4>
-                <p className="text-3xl font-bold mt-1 tracking-tight text-emerald-400">{tasksCompletedCount}</p>
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Done</h4>
+                <p className="text-3xl font-bold mt-1 text-emerald-400">{tasksCompletedCount}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Pending Tasks</h4>
-                <p className="text-3xl font-bold mt-1 tracking-tight text-rose-400">{tasksIncompleteCount}</p>
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">To Do</h4>
+                <p className="text-3xl font-bold mt-1 text-rose-400">{tasksIncompleteCount}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days in Year</h4>
-                <p className="text-3xl font-bold mt-1 tracking-tight text-orange-400">{daysRemainingInYear()}</p>
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days Left</h4>
+                <p className="text-3xl font-bold mt-1 text-orange-400">{daysRemainingInYear()}</p>
               </div>
             </div>
             
@@ -161,14 +159,33 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto">
             {activeP ? (
               <div className="space-y-6 pb-24 lg:pb-0">
-                <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400">← Back</Button>
-                <h2 className="text-3xl lg:text-4xl font-bold">{activeP.name}</h2>
-                <div className="space-y-2 mt-6">
-                  {activeP.tasks.map(t => <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />)}
+                <div className="flex justify-between items-start">
+                    <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400">← Back</Button>
+                    <button onClick={() => deleteProject(activeP.id)} className="text-slate-600 hover:text-rose-500 transition-colors text-sm">Delete Project</button>
                 </div>
+                <div className="flex items-center gap-4">
+                    <div className="w-3 h-10 rounded-full" style={{ backgroundColor: activeP.color }}></div>
+                    <h2 className="text-3xl font-bold">{activeP.name}</h2>
+                </div>
+
+                <div className="flex gap-4 border-b border-white/10">
+                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>To Do ({activeP.tasks.filter(t => !t.isCompleted).length})</button>
+                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done ({activeP.tasks.filter(t => t.isCompleted).length})</button>
+                </div>
+
+                <div className="space-y-2 mt-4 min-h-[100px]">
+                  {activeP.tasks.filter(t => taskTab === 'pending' ? !t.isCompleted : t.isCompleted).length > 0 ? (
+                    activeP.tasks.filter(t => taskTab === 'pending' ? !t.isCompleted : t.isCompleted).map(t => (
+                        <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />
+                    ))
+                  ) : (
+                    <p className="text-slate-600 text-sm italic py-8 text-center">No tasks found in this section.</p>
+                  )}
+                </div>
+
                 <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl">
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Task name..." />
+                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
                     <div className="flex gap-2">
                       <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
                       <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
@@ -205,13 +222,12 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Mobile Nav Bar */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Home</span>
+            <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Flow</span>
         </button>
         <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">📁</span><span className="text-[10px] font-bold">Projects</span>
+            <span className="text-xl">📁</span><span className="text-[10px] font-bold">Docs</span>
         </button>
         <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">📅</span><span className="text-[10px] font-bold">Cal</span>
@@ -221,7 +237,6 @@ const App: React.FC = () => {
         </button>
       </nav>
 
-      {/* Project Modal */}
       {isAddingProject && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
           <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
