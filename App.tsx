@@ -61,19 +61,22 @@ const App: React.FC = () => {
     try {
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
       
-      // Fixed: Removed -latest and added v1beta versioning
+      // FORCED v1beta configuration to stop the 404 error
       const model = genAI.getGenerativeModel(
         { model: "gemini-1.5-flash" },
-        { apiVersion: "v1beta" }
+        { apiVersion: 'v1beta' }
       );
 
       const systemInstruction = `You are the AI assistant for "Z's Flow," a task manager. 
       Today's Date: ${new Date().toLocaleDateString()}.
-      User Project Data: ${JSON.stringify(projects)}.
-      Instruction: Help the user manage tasks. Be concise. Use bullet points for lists. 
-      If asked what to do, look at pending tasks and suggest the most urgent ones.`;
+      Project Data: ${JSON.stringify(projects)}.
+      Instruction: Help the user manage tasks. Be concise and use bullet points for lists.`;
 
-      const result = await model.generateContent([systemInstruction, userMsg.text]);
+      const result = await model.generateContent([
+        { text: systemInstruction },
+        { text: userMsg.text }
+      ]);
+      
       const response = await result.response;
       const responseText = response.text();
 
@@ -89,7 +92,7 @@ const App: React.FC = () => {
       setChatHistory(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'model', 
-        text: `Connection Error: ${e.message || "Please check your API key settings."}`, 
+        text: `Connection Error: ${e.message || "Check API version and key."}`, 
         timestamp: new Date().toISOString() 
       } as ChatMessage]);
     } finally { 
@@ -137,7 +140,6 @@ const App: React.FC = () => {
     if (!error) setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj));
   };
 
-  const totalTasksCount = projects.reduce((acc, p) => acc + p.tasks.length, 0);
   const tasksCompletedCount = projects.reduce((acc, p) => acc + p.tasks.filter(t => t.isCompleted).length, 0);
   const tasksIncompleteCount = projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0);
   const activeP = projects.find(p => p.id === selectedProjectId);
@@ -211,8 +213,8 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex gap-4 border-b border-white/10">
-                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>Tasks To Do ({activeP.tasks.filter(t => !t.isCompleted).length})</button>
-                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Tasks Done ({activeP.tasks.filter(t => t.isCompleted).length})</button>
+                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>To Do ({activeP.tasks.filter(t => !t.isCompleted).length})</button>
+                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done ({activeP.tasks.filter(t => t.isCompleted).length})</button>
                 </div>
 
                 <div className="space-y-2 mt-4 min-h-[100px]">
@@ -221,7 +223,7 @@ const App: React.FC = () => {
                         <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />
                     ))
                   ) : (
-                    <p className="text-slate-600 text-sm italic py-8 text-center">No tasks found in this section.</p>
+                    <p className="text-slate-600 text-sm italic py-8 text-center">No tasks found here.</p>
                   )}
                 </div>
 
@@ -257,12 +259,12 @@ const App: React.FC = () => {
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
               {chatHistory.length === 0 && (
                 <div className="text-center py-20 text-slate-500 text-sm">
-                  <p>Ask me something like "What are my pending tasks?"</p>
+                  <p>Ask me about your tasks or projects!</p>
                 </div>
               )}
               {chatHistory.map(m => (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>
+                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600 shadow-lg' : 'bg-white/5 border border-white/10'}`}>
                     {m.text}
                   </div>
                 </div>
@@ -270,7 +272,7 @@ const App: React.FC = () => {
               {isChatLoading && (
                 <div className="flex justify-start">
                   <div className="bg-white/5 border border-white/10 p-4 rounded-2xl animate-pulse text-slate-400 text-xs">
-                    Z's Flow is thinking...
+                    Thinking...
                   </div>
                 </div>
               )}
@@ -279,7 +281,7 @@ const App: React.FC = () => {
             <div className="flex gap-2">
               <input 
                 className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-500 transition-colors" 
-                placeholder="Ask AI..." 
+                placeholder="Message AI assistant..." 
                 value={chatInput} 
                 onChange={e => setChatInput(e.target.value)} 
                 onKeyPress={e => e.key === 'Enter' && handleSendMessage()} 
@@ -311,11 +313,11 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
           <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
             <h3 className="text-2xl font-bold mb-4">New Project</h3>
-            <input className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 mb-4 outline-none" placeholder="Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
+            <input className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 mb-4 outline-none" placeholder="Project Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
             <div className="flex justify-between mb-8 px-2">
                 {PROJECT_COLORS.map(c => <button key={c.hex} onClick={() => setNewProject({...newProject, color: c.hex})} className={`w-8 h-8 rounded-full ${newProject.color === c.hex ? 'ring-4 ring-white scale-110' : 'opacity-40'}`} style={{ backgroundColor: c.hex }} />)}
             </div>
-            <Button className="w-full bg-orange-600 py-4 font-bold" onClick={addProject}>Create Project</Button>
+            <Button className="w-full bg-orange-600 py-4 font-bold" onClick={addProject}>Create</Button>
             <Button variant="ghost" className="w-full mt-2" onClick={() => setIsAddingProject(false)}>Cancel</Button>
           </div>
         </div>
