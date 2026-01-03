@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Project, Task, ViewType, ChatMessage } from './types';
 import { PROJECT_COLORS } from './constants';
 import { Button } from './components/Button';
@@ -21,6 +21,9 @@ const App: React.FC = () => {
   const [lastSynced, setLastSynced] = useState<Date>(new Date());
   const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
 
+  // Ref for auto-scrolling chat
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   const daysRemainingInYear = () => {
     const today = new Date();
     const endOfYear = new Date(today.getFullYear(), 11, 31);
@@ -38,19 +41,50 @@ const App: React.FC = () => {
     return () => { supabase.removeChannel(sub); };
   }, []);
 
+  // Auto-scroll effect
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, isChatLoading]);
+
   const handleSendMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
+    
     const userMsg = { id: crypto.randomUUID(), role: 'user', text: chatInput, timestamp: new Date().toISOString() };
     setChatHistory(prev => [...prev, userMsg as ChatMessage]);
     setChatInput('');
     setIsChatLoading(true);
+
     try {
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const result = await model.generateContent(`Context: ${JSON.stringify(projects)}. User: ${userMsg.text}`);
+      
+      // Enhanced prompt gives Gemini specific instructions on how to behave
+      const systemContext = `You are the personal assistant for "Z's Flow." 
+      Today's Date: ${new Date().toLocaleDateString()}.
+      Project Data: ${JSON.stringify(projects)}. 
+      Instruction: Help the user manage tasks. Be concise. Use bullet points for lists. 
+      If asked what to do, look at the pending tasks and suggest the most urgent ones.`;
+
+      const result = await model.generateContent([systemContext, userMsg.text]);
       const response = await result.response;
-      setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: response.text(), timestamp: new Date().toISOString() } as ChatMessage]);
-    } catch (e) { console.error(e); } finally { setIsChatLoading(false); }
+      
+      setChatHistory(prev => [...prev, { 
+        id: crypto.randomUUID(), 
+        role: 'model', 
+        text: response.text(), 
+        timestamp: new Date().toISOString() 
+      } as ChatMessage]);
+    } catch (e) { 
+      console.error(e);
+      setChatHistory(prev => [...prev, { 
+        id: crypto.randomUUID(), 
+        role: 'model', 
+        text: "Sorry, I'm having trouble connecting to my brain right now. Check your API key!", 
+        timestamp: new Date().toISOString() 
+      } as ChatMessage]);
+    } finally { 
+      setIsChatLoading(false); 
+    }
   };
 
   const addProject = async () => {
@@ -72,7 +106,6 @@ const App: React.FC = () => {
   const addTask = async (pid: string) => {
     const p = projects.find(p => p.id === pid);
     if (!p || !newTaskTitle) return;
-    // Fix: Using the literal date string avoids timezone shifting
     const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate }];
     const { error } = await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
     if (!error) { setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj)); setNewTaskTitle(''); }
@@ -209,14 +242,43 @@ const App: React.FC = () => {
         )}
 
         {activeView === 'calendar' && <Calendar projects={projects} />}
+        
         {activeView === 'chat' && (
-          <div className="max-w-3xl mx-auto flex flex-col h-[65vh] lg:h-[70vh] bg-black/20 rounded-3xl border border-white/10 p-4">
+          <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-180px)] lg:h-[75vh] bg-black/20 rounded-3xl border border-white/10 p-4 relative">
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
-              {chatHistory.map(m => <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>{m.text}</div></div>)}
+              {chatHistory.length === 0 && (
+                <div className="text-center py-20 text-slate-500 text-sm">
+                  <p>Ask me something like "What are my pending tasks?"</p>
+                </div>
+              )}
+              {chatHistory.map(m => (
+                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>
+                    {m.text}
+                  </div>
+                </div>
+              ))}
+              {isChatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white/5 border border-white/10 p-4 rounded-2xl animate-pulse text-slate-400 text-xs">
+                    Z's Flow is thinking...
+                  </div>
+                </div>
+              )}
+              {/* Invisible anchor for auto-scrolling */}
+              <div ref={chatEndRef} />
             </div>
             <div className="flex gap-2">
-              <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none" placeholder="Ask AI..." value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} />
-              <Button className="bg-orange-600" onClick={handleSendMessage}>Send</Button>
+              <input 
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-500 transition-colors" 
+                placeholder="Ask AI..." 
+                value={chatInput} 
+                onChange={e => setChatInput(e.target.value)} 
+                onKeyPress={e => e.key === 'Enter' && handleSendMessage()} 
+              />
+              <Button className="bg-orange-600 px-6" onClick={handleSendMessage} disabled={isChatLoading}>
+                {isChatLoading ? "..." : "Send"}
+              </Button>
             </div>
           </div>
         )}
