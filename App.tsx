@@ -125,11 +125,11 @@ const App: React.FC = () => {
                 <p className="text-3xl font-bold mt-1">{projects.length}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Task's Done</h4>
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Tasks Done</h4>
                 <p className="text-3xl font-bold mt-1 text-emerald-400">{tasksCompletedCount}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Task's To Do</h4>
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Tasks To Do</h4>
                 <p className="text-3xl font-bold mt-1 text-rose-400">{tasksIncompleteCount}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
@@ -169,8 +169,8 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex gap-4 border-b border-white/10">
-                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>Task's To Do ({activeP.tasks.filter(t => !t.isCompleted).length})</button>
-                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Task's Done ({activeP.tasks.filter(t => t.isCompleted).length})</button>
+                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>Tasks To Do ({activeP.tasks.filter(t => !t.isCompleted).length})</button>
+                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Tasks Done ({activeP.tasks.filter(t => t.isCompleted).length})</button>
                 </div>
 
                 <div className="space-y-2 mt-4 min-h-[100px]">
