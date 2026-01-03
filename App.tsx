@@ -21,7 +21,6 @@ const App: React.FC = () => {
   const [lastSynced, setLastSynced] = useState<Date>(new Date());
   const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
 
-  // Ref for auto-scrolling chat
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const daysRemainingInYear = () => {
@@ -35,87 +34,62 @@ const App: React.FC = () => {
     if (!error && data) { setProjects(data); setLastSynced(new Date()); }
   };
 
+  useEffect(() => {
+    loadData();
+    const sub = supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => loadData()).subscribe();
+    return () => { supabase.removeChannel(sub); };
+  }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, isChatLoading]);
+
   const handleSendMessage = async () => {
-    if (!chatInput.trim() || isChatLoading) return;
+    if (!chatInput.trim() || isChatLoading) return;
     
-    const userMsg = { 
+    const userMsg = { 
       id: crypto.randomUUID(), 
       role: 'user', 
       text: chatInput, 
       timestamp: new Date().toISOString() 
     };
 
-    setChatHistory(prev => [...prev, userMsg as ChatMessage]);
-    setChatInput('');
-    setIsChatLoading(true);
+    setChatHistory(prev => [...prev, userMsg as ChatMessage]);
+    setChatInput('');
+    setIsChatLoading(true);
 
-    try {
-      // 1. Initialize the API
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+    try {
+      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
       
-      // 2. Explicitly use v1beta to fix the 404 "model not found" error
-      const model = genAI.getGenerativeModel(
+      // Fixed: Removed -latest and added v1beta versioning
+      const model = genAI.getGenerativeModel(
         { model: "gemini-1.5-flash" },
         { apiVersion: "v1beta" }
       );
 
-      // 3. Inject context so the AI knows about Z's Flow
       const systemInstruction = `You are the AI assistant for "Z's Flow," a task manager. 
-      Current Date: ${new Date().toLocaleDateString()}.
+      Today's Date: ${new Date().toLocaleDateString()}.
       User Project Data: ${JSON.stringify(projects)}.
-      Be helpful, concise, and professional.`;
+      Instruction: Help the user manage tasks. Be concise. Use bullet points for lists. 
+      If asked what to do, look at pending tasks and suggest the most urgent ones.`;
 
-      const result = await model.generateContent([systemInstruction, userMsg.text]);
-      const response = await result.response;
+      const result = await model.generateContent([systemInstruction, userMsg.text]);
+      const response = await result.response;
       const responseText = response.text();
 
-      setChatHistory(prev => [...prev, { 
+      setChatHistory(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'model', 
         text: responseText, 
         timestamp: new Date().toISOString() 
       } as ChatMessage]);
 
-    } catch (e: any) { 
+    } catch (e: any) { 
       console.error("Gemini Error:", e);
       setChatHistory(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'model', 
-        text: `Error: ${e.message || "I'm having trouble connecting to my brain. Please check your API key and connection."}`, 
-        timestamp: new Date().toISOString() 
-      } as ChatMessage]);
-    } finally { 
-      setIsChatLoading(false); 
-    }
-  };
-    setIsChatLoading(true);
-
-    try {
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-      
-      // Enhanced prompt gives Gemini specific instructions on how to behave
-      const systemContext = `You are the personal assistant for "Z's Flow." 
-      Today's Date: ${new Date().toLocaleDateString()}.
-      Project Data: ${JSON.stringify(projects)}. 
-      Instruction: Help the user manage tasks. Be concise. Use bullet points for lists. 
-      If asked what to do, look at the pending tasks and suggest the most urgent ones.`;
-
-      const result = await model.generateContent([systemContext, userMsg.text]);
-      const response = await result.response;
-      
-      setChatHistory(prev => [...prev, { 
-        id: crypto.randomUUID(), 
-        role: 'model', 
-        text: response.text(), 
-        timestamp: new Date().toISOString() 
-      } as ChatMessage]);
-    } catch (e) { 
-      console.error(e);
-      setChatHistory(prev => [...prev, { 
-        id: crypto.randomUUID(), 
-        role: 'model', 
-        text: "Sorry, I'm having trouble connecting to my brain right now. Check your API key!", 
+        text: `Connection Error: ${e.message || "Please check your API key settings."}`, 
         timestamp: new Date().toISOString() 
       } as ChatMessage]);
     } finally { 
@@ -170,7 +144,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#0f172a] text-white font-sans pb-20 lg:pb-0">
-      {/* Sidebar Desktop */}
       <aside className="hidden lg:flex w-72 bg-black/20 p-6 flex-col gap-8 border-r border-white/5">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
         <nav className="flex flex-col gap-2">
@@ -301,7 +274,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
               )}
-              {/* Invisible anchor for auto-scrolling */}
               <div ref={chatEndRef} />
             </div>
             <div className="flex gap-2">
