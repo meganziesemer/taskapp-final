@@ -56,7 +56,7 @@ const App: React.FC = () => {
 
     try {
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
       
       // Enhanced prompt gives Gemini specific instructions on how to behave
       const systemContext = `You are the personal assistant for "Z's Flow." 
