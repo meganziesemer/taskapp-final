@@ -62,7 +62,7 @@ const App: React.FC = () => {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       
       // We manually build the URL to force the v1beta endpoint
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
 
       const systemInstruction = `You are the AI assistant for "Z's Flow," a task manager. 
       Today's Date: ${new Date().toLocaleDateString()}.
