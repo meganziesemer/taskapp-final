@@ -35,23 +35,59 @@ const App: React.FC = () => {
     if (!error && data) { setProjects(data); setLastSynced(new Date()); }
   };
 
-  useEffect(() => {
-    loadData();
-    const sub = supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => loadData()).subscribe();
-    return () => { supabase.removeChannel(sub); };
-  }, []);
-
-  // Auto-scroll effect
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory, isChatLoading]);
-
   const handleSendMessage = async () => {
-    if (!chatInput.trim() || isChatLoading) return;
+    if (!chatInput.trim() || isChatLoading) return;
     
-    const userMsg = { id: crypto.randomUUID(), role: 'user', text: chatInput, timestamp: new Date().toISOString() };
-    setChatHistory(prev => [...prev, userMsg as ChatMessage]);
-    setChatInput('');
+    const userMsg = { 
+      id: crypto.randomUUID(), 
+      role: 'user', 
+      text: chatInput, 
+      timestamp: new Date().toISOString() 
+    };
+
+    setChatHistory(prev => [...prev, userMsg as ChatMessage]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      // 1. Initialize the API
+      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+      
+      // 2. Explicitly use v1beta to fix the 404 "model not found" error
+      const model = genAI.getGenerativeModel(
+        { model: "gemini-1.5-flash" },
+        { apiVersion: "v1beta" }
+      );
+
+      // 3. Inject context so the AI knows about Z's Flow
+      const systemInstruction = `You are the AI assistant for "Z's Flow," a task manager. 
+      Current Date: ${new Date().toLocaleDateString()}.
+      User Project Data: ${JSON.stringify(projects)}.
+      Be helpful, concise, and professional.`;
+
+      const result = await model.generateContent([systemInstruction, userMsg.text]);
+      const response = await result.response;
+      const responseText = response.text();
+
+      setChatHistory(prev => [...prev, { 
+        id: crypto.randomUUID(), 
+        role: 'model', 
+        text: responseText, 
+        timestamp: new Date().toISOString() 
+      } as ChatMessage]);
+
+    } catch (e: any) { 
+      console.error("Gemini Error:", e);
+      setChatHistory(prev => [...prev, { 
+        id: crypto.randomUUID(), 
+        role: 'model', 
+        text: `Error: ${e.message || "I'm having trouble connecting to my brain. Please check your API key and connection."}`, 
+        timestamp: new Date().toISOString() 
+      } as ChatMessage]);
+    } finally { 
+      setIsChatLoading(false); 
+    }
+  };
     setIsChatLoading(true);
 
     try {
