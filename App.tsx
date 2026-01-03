@@ -4,7 +4,6 @@ import { PROJECT_COLORS } from './constants';
 import { Button } from './components/Button';
 import { TaskItem } from './components/TaskItem';
 import { Calendar } from './components/Calendar';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from './services/supabaseClient';
 
 const App: React.FC = () => {
@@ -44,6 +43,7 @@ const App: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isChatLoading]);
 
+  // --- UPDATED AI HANDLER (BRUTE FORCE FETCH) ---
   const handleSendMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
     
@@ -59,26 +59,33 @@ const App: React.FC = () => {
     setIsChatLoading(true);
 
     try {
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       
-      // FORCED v1beta configuration to stop the 404 error
-      const model = genAI.getGenerativeModel(
-        { model: "gemini-1.5-flash" },
-        { apiVersion: 'v1beta' }
-      );
+      // We manually build the URL to force the v1beta endpoint
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
       const systemInstruction = `You are the AI assistant for "Z's Flow," a task manager. 
       Today's Date: ${new Date().toLocaleDateString()}.
       Project Data: ${JSON.stringify(projects)}.
       Instruction: Help the user manage tasks. Be concise and use bullet points for lists.`;
 
-      const result = await model.generateContent([
-        { text: systemInstruction },
-        { text: userMsg.text }
-      ]);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ 
+            parts: [{ text: systemInstruction + "\n\nUser Question: " + userMsg.text }] 
+          }]
+        })
+      });
+
+      const data = await response.json();
       
-      const response = await result.response;
-      const responseText = response.text();
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+
+      const responseText = data.candidates[0].content.parts[0].text;
 
       setChatHistory(prev => [...prev, { 
         id: crypto.randomUUID(), 
@@ -92,7 +99,7 @@ const App: React.FC = () => {
       setChatHistory(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'model', 
-        text: `Connection Error: ${e.message || "Check API version and key."}`, 
+        text: `Error: ${e.message || "I'm having trouble connecting to my brain. Check your Vercel API key!"}`, 
         timestamp: new Date().toISOString() 
       } as ChatMessage]);
     } finally { 
