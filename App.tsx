@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+  import React, { useState, useEffect, useRef } from 'react';
 import { Project, Task, ViewType, ChatMessage } from './types';
 import { PROJECT_COLORS } from './constants';
 import { Button } from './components/Button';
@@ -60,6 +60,15 @@ const App: React.FC = () => {
       checkDate.setDate(checkDate.getDate() - 1);
     }
     return streak;
+  };
+
+  // Helper to determine the color of the heatmap square based on your requested scale
+  const getHeatmapColor = (count: number) => {
+    if (count === 0) return 'bg-white/5';
+    if (count === 1) return 'bg-rose-500';           // Red
+    if (count >= 2 && count <= 3) return 'bg-orange-500'; // Orange
+    if (count >= 4 && count <= 5) return 'bg-yellow-400'; // Yellow
+    return 'bg-emerald-500';                        // Green (5+)
   };
 
   const getHeatmapData = () => {
@@ -222,10 +231,22 @@ const App: React.FC = () => {
             </div>
 
             <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
-              <h3 className="font-bold mb-4 text-[10px] uppercase tracking-widest text-slate-500">Consistency Heatmap</h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-500">Consistency Heatmap</h3>
+                <div className="flex gap-2 items-center text-[8px] uppercase tracking-tighter text-slate-600 font-bold">
+                  <span>Less</span>
+                  <div className="w-2 h-2 rounded-sm bg-rose-500"></div>
+                  <div className="w-2 h-2 rounded-sm bg-orange-500"></div>
+                  <div className="w-2 h-2 rounded-sm bg-yellow-400"></div>
+                  <div className="w-2 h-2 rounded-sm bg-emerald-500"></div>
+                  <span>More</span>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-1">
                 {getHeatmapData().map((day, i) => (
-                  <div key={i} className={`w-3 h-3 rounded-sm ${day.count > 0 ? 'bg-orange-500' : 'bg-white/5'}`} style={{ opacity: day.count > 0 ? Math.min(day.count * 0.4, 1) : 1 }} title={day.date} />
+                  <div key={i} 
+                    className={`w-3 h-3 rounded-sm transition-colors duration-500 ${getHeatmapColor(day.count)}`} 
+                    title={`${day.date}: ${day.count} habits`} />
                 ))}
               </div>
             </div>
