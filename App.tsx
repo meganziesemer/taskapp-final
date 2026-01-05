@@ -13,7 +13,10 @@ const App: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDate, setNewTaskDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Local date fix for the initial state
+  const [newTaskDate, setNewTaskDate] = useState(new Date().toLocaleDateString('en-CA')); 
+  
   const [newProject, setNewProject] = useState({ name: '', description: '', color: PROJECT_COLORS[0].hex });
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -43,7 +46,6 @@ const App: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isChatLoading]);
 
-  // --- UPDATED AI HANDLER (BRUTE FORCE FETCH) ---
   const handleSendMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
     
@@ -60,8 +62,6 @@ const App: React.FC = () => {
 
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      
-      // We manually build the URL to force the v1beta endpoint
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
 
       const systemInstruction = `You are the AI assistant for "Z's Flow," a task manager. 
@@ -80,10 +80,7 @@ const App: React.FC = () => {
       });
 
       const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error.message);
-      }
+      if (data.error) throw new Error(data.error.message);
 
       const responseText = data.candidates[0].content.parts[0].text;
 
@@ -99,7 +96,7 @@ const App: React.FC = () => {
       setChatHistory(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'model', 
-        text: `Error: ${e.message || "I'm having trouble connecting to my brain. Check your Vercel API key!"}`, 
+        text: `Error: ${e.message || "Connection issue."}`, 
         timestamp: new Date().toISOString() 
       } as ChatMessage]);
     } finally { 
@@ -238,6 +235,7 @@ const App: React.FC = () => {
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
                     <div className="flex gap-2">
+                      {/* FIXED DATE SELECTOR */}
                       <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
                       <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
                     </div>
@@ -245,15 +243,18 @@ const App: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              /* CONDENSED MOBILE PROJECT VIEW */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {projects.map(p => (
-                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 p-6 rounded-3xl border border-white/10 text-left hover:border-orange-500/30 transition-all">
-                    <div className="w-10 h-10 rounded-2xl mb-4" style={{ backgroundColor: p.color }}></div>
-                    <h3 className="font-bold text-xl">{p.name}</h3>
-                    <p className="text-slate-500 text-xs">{p.tasks.filter(t => !t.isCompleted).length} pending</p>
+                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 h-16 rounded-2xl border border-white/10 text-left hover:border-orange-500/30 transition-all flex items-center overflow-hidden">
+                    <div className="w-2 h-full" style={{ backgroundColor: p.color }}></div>
+                    <div className="px-4 flex flex-1 justify-between items-center">
+                      <h3 className="font-bold text-base truncate pr-2">{p.name}</h3>
+                      <p className="text-slate-500 text-[10px] whitespace-nowrap bg-white/5 px-2 py-1 rounded-md">{p.tasks.filter(t => !t.isCompleted).length} pending</p>
+                    </div>
                   </button>
                 ))}
-                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/5 p-6 rounded-3xl text-slate-500 flex flex-col items-center justify-center gap-2">+ New Project</button>
+                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/5 h-16 rounded-2xl text-slate-500 flex items-center justify-center gap-2 text-sm">+ New Project</button>
               </div>
             )}
           </div>
@@ -301,12 +302,13 @@ const App: React.FC = () => {
         )}
       </main>
 
+      {/* UPDATED MOBILE MENU LABELS */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Flow</span>
+            <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Dash</span>
         </button>
         <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">📁</span><span className="text-[10px] font-bold">Docs</span>
+            <span className="text-xl">📁</span><span className="text-[10px] font-bold">Projects</span>
         </button>
         <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">📅</span><span className="text-[10px] font-bold">Cal</span>
