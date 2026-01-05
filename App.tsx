@@ -14,9 +14,13 @@ const App: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   
-  // Local date fix for the initial state
-  const [newTaskDate, setNewTaskDate] = useState(new Date().toLocaleDateString('en-CA')); 
-  
+  // FIX: Using a stable date string (YYYY-MM-DD)
+  const getTodayString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const [newTaskDate, setNewTaskDate] = useState(getTodayString()); 
   const [newProject, setNewProject] = useState({ name: '', description: '', color: PROJECT_COLORS[0].hex });
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -32,8 +36,13 @@ const App: React.FC = () => {
   };
 
   const loadData = async () => {
-    const { data, error } = await supabase.from('projects').select('*').order('createdAt', { ascending: false });
-    if (!error && data) { setProjects(data); setLastSynced(new Date()); }
+    const { data, error } = await supabase.from('projects').select('*');
+    if (!error && data) { 
+      // SORT: Alphabetical order A-Z
+      const sortedData = [...data].sort((a, b) => a.name.localeCompare(b.name));
+      setProjects(sortedData); 
+      setLastSynced(new Date()); 
+    }
   };
 
   useEffect(() => {
@@ -67,7 +76,7 @@ const App: React.FC = () => {
       const systemInstruction = `You are the AI assistant for "Z's Flow," a task manager. 
       Today's Date: ${new Date().toLocaleDateString()}.
       Project Data: ${JSON.stringify(projects)}.
-      Instruction: Help the user manage tasks. Be concise and use bullet points for lists.`;
+      Instruction: Help the user manage tasks. Be concise.`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -108,7 +117,11 @@ const App: React.FC = () => {
     if (!newProject.name) return;
     const project = { id: crypto.randomUUID(), name: newProject.name, description: '', color: newProject.color, createdAt: new Date().toISOString(), tasks: [] };
     const { error } = await supabase.from('projects').insert([project]);
-    if (!error) { setProjects(prev => [project, ...prev]); setIsAddingProject(false); setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); }
+    if (!error) { 
+      setIsAddingProject(false); 
+      setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); 
+      loadData(); // Re-trigger load to ensure alphabetical sort
+    }
   };
 
   const deleteProject = async (pid: string) => {
@@ -123,9 +136,15 @@ const App: React.FC = () => {
   const addTask = async (pid: string) => {
     const p = projects.find(p => p.id === pid);
     if (!p || !newTaskTitle) return;
+    
+    // Date Fix: Storing as the exact selected string
     const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate }];
+    
     const { error } = await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
-    if (!error) { setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj)); setNewTaskTitle(''); }
+    if (!error) { 
+      setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj)); 
+      setNewTaskTitle(''); 
+    }
   };
 
   const toggleTask = async (pid: string, tid: string) => {
@@ -235,7 +254,6 @@ const App: React.FC = () => {
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
                     <div className="flex gap-2">
-                      {/* FIXED DATE SELECTOR */}
                       <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
                       <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
                     </div>
@@ -243,7 +261,6 @@ const App: React.FC = () => {
                 </div>
               </div>
             ) : (
-              /* CONDENSED MOBILE PROJECT VIEW */
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {projects.map(p => (
                   <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 h-16 rounded-2xl border border-white/10 text-left hover:border-orange-500/30 transition-all flex items-center overflow-hidden">
@@ -302,7 +319,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* UPDATED MOBILE MENU LABELS */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Dash</span>
