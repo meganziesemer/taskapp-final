@@ -29,7 +29,6 @@ const App: React.FC = () => {
   const [newProject, setNewProject] = useState({ name: '', description: '', color: PROJECT_COLORS[0].hex });
   
   const chatEndRef = useRef<HTMLDivElement>(null);
-
   const activeP = projects.find(p => p.id === selectedProjectId);
 
   const daysInYear = () => {
@@ -57,13 +56,24 @@ const App: React.FC = () => {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, isChatLoading]);
 
+  // ACTION: Delete Project
+  const deleteProject = async (pid: string) => {
+    const confirmed = window.confirm("Are you sure you want to delete this project and all its tasks? This cannot be undone.");
+    if (!confirmed) return;
+
+    const { error } = await supabase.from('projects').delete().eq('id', pid);
+    if (!error) {
+      setSelectedProjectId(null);
+      loadData();
+    }
+  };
+
   const toggleProjectExpand = (projectId: string) => {
     setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }));
   };
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
-    
     const userMsg = { id: crypto.randomUUID(), role: 'user', text: chatInput, timestamp: new Date().toISOString() };
     setChatHistory(prev => [...prev, userMsg as ChatMessage]);
     setChatInput('');
@@ -72,34 +82,16 @@ const App: React.FC = () => {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-      
-      const systemInstruction = `You are the AI assistant for Z's Flow, a productivity app. 
-      You help the user manage their projects and tasks. 
-      Current user data: ${JSON.stringify(projects)}. 
-      Be concise, encouraging, and helpful.`;
-
+      const systemInstruction = `Assistant for Z's Flow. Data: ${JSON.stringify(projects)}.`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: systemInstruction + "\n\nUser Question: " + userMsg.text }] }]
-        })
+        body: JSON.stringify({ contents: [{ parts: [{ text: systemInstruction + "\n\nUser: " + userMsg.text }] }] })
       });
-
       const data = await response.json();
       const responseText = data.candidates[0].content.parts[0].text;
-      
-      setChatHistory(prev => [...prev, { 
-        id: crypto.randomUUID(), 
-        role: 'model', 
-        text: responseText, 
-        timestamp: new Date().toISOString() 
-      } as ChatMessage]);
-    } catch (e) {
-      console.error("AI Error:", e);
-    } finally {
-      setIsChatLoading(false);
-    }
+      setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: responseText, timestamp: new Date().toISOString() } as ChatMessage]);
+    } catch (e) { console.error(e); } finally { setIsChatLoading(false); }
   };
 
   const updateProjectName = async (pid: string) => {
@@ -141,6 +133,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#0f172a] text-white font-sans pb-20 lg:pb-0">
+      {/* SIDEBAR */}
       <aside className="hidden lg:flex w-72 bg-black/20 p-6 flex-col gap-8 border-r border-white/5">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
@@ -155,12 +148,13 @@ const App: React.FC = () => {
         </nav>
       </aside>
 
+      {/* MOBILE HEADER */}
       <header className="lg:hidden p-4 border-b border-white/5 bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-40 flex justify-between items-center">
         <div>
-          <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent leading-tight">Z's Flow</h1>
           <p className="text-[8px] text-slate-500 italic">make every day count</p>
         </div>
-        <div className="text-[10px] text-emerald-400 uppercase font-bold">Synced</div>
+        <div className="text-[10px] text-emerald-400 uppercase font-bold tracking-tighter">Synced</div>
       </header>
 
       <main className="flex-1 p-4 lg:p-10 overflow-y-auto">
@@ -193,7 +187,7 @@ const App: React.FC = () => {
                 const isExpanded = expandedProjects[p.id];
                 return (
                   <div key={p.id} className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden transition-all duration-300">
-                    <button onClick={() => toggleProjectExpand(p.id)} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                    <button onClick={() => toggleProjectExpand(p.id)} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] transition-colors text-left">
                       <div className="flex items-center gap-3">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
                         <h3 className="font-bold text-sm tracking-tight">{p.name}</h3>
@@ -219,7 +213,16 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto">
             {activeP ? (
               <div className="space-y-6 pb-24 lg:pb-0">
-                <Button variant="ghost" onClick={() => {setSelectedProjectId(null); setIsEditingName(false);}} className="p-0 text-orange-400">← Back</Button>
+                <div className="flex justify-between items-center">
+                  <Button variant="ghost" onClick={() => {setSelectedProjectId(null); setIsEditingName(false);}} className="p-0 text-orange-400">← Back</Button>
+                  <button 
+                    onClick={() => deleteProject(activeP.id)} 
+                    className="text-[10px] text-slate-600 font-bold uppercase tracking-widest hover:text-rose-500 transition-colors bg-white/5 px-3 py-1.5 rounded-lg border border-white/5"
+                  >
+                    Delete Project
+                  </button>
+                </div>
+
                 <div className="flex items-center gap-4 group">
                     <div className="w-3 h-10 rounded-full" style={{ backgroundColor: activeP.color }}></div>
                     {isEditingName ? (
@@ -230,15 +233,18 @@ const App: React.FC = () => {
                         </h2>
                     )}
                 </div>
+
                 <div className="flex gap-4 border-b border-white/10">
-                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>To Do</button>
-                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done</button>
+                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>To Do</button>
+                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done</button>
                 </div>
+
                 <div className="space-y-2">
                   {activeP.tasks.filter(t => taskTab === 'pending' ? !t.isCompleted : t.isCompleted).map(t => (
                       <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />
                   ))}
                 </div>
+
                 <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl">
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none text-white" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
@@ -270,56 +276,33 @@ const App: React.FC = () => {
         
         {activeView === 'chat' && (
           <div className="max-w-3xl mx-auto flex flex-col h-[70vh] bg-black/20 rounded-3xl border border-white/10 p-4 relative">
-            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
-              {chatHistory.length === 0 && (
-                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
-                  <span className="text-4xl">🤖</span>
-                  <p className="text-sm">Ask me anything about your projects or tasks!</p>
-                </div>
-              )}
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
               {chatHistory.map(m => (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600 shadow-lg shadow-orange-900/20' : 'bg-white/5 border border-white/10'}`}>
+                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>
                     {m.text}
                   </div>
                 </div>
-              )}
-              {isChatLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white/5 border border-white/10 p-4 rounded-2xl">
-                    <div className="flex gap-1">
-                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></div>
-                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              ))}
               <div ref={chatEndRef} />
             </div>
             <div className="flex gap-2">
-              <input 
-                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-500/50 transition-colors" 
-                value={chatInput} 
-                onChange={e => setChatInput(e.target.value)} 
-                onKeyPress={e => e.key === 'Enter' && handleSendMessage()} 
-                placeholder="Ask AI..." 
-              />
-              <Button className="bg-orange-600 px-6" onClick={handleSendMessage} disabled={isChatLoading}>
-                Send
-              </Button>
+              <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} placeholder="Ask AI..." />
+              <Button className="bg-orange-600 px-6" onClick={handleSendMessage} disabled={isChatLoading}>Send</Button>
             </div>
           </div>
         )}
       </main>
 
+      {/* MOBILE NAV */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
-        <button onClick={() => setActiveView('dashboard')} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
+        <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
         <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>📁<span className="text-[10px]">Projects</span></button>
         <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>📅<span className="text-[10px]">Cal</span></button>
         <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>🤖<span className="text-[10px]">AI</span></button>
       </nav>
 
+      {/* ADD MODAL */}
       {isAddingProject && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
           <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
