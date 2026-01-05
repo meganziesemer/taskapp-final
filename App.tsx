@@ -6,7 +6,6 @@ import { TaskItem } from './components/TaskItem';
 import { Calendar } from './components/Calendar';
 import { supabase } from './services/supabaseClient';
 
-// New interface for Habits
 interface Habit {
   id: string;
   name: string;
@@ -16,13 +15,13 @@ interface Habit {
 
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [habits, setHabits] = useState<Habit[]>([]); // Added
+  const [habits, setHabits] = useState<Habit[]>([]); 
+  const [activeView, setActiveView] = useState<ViewType | 'habits'>('dashboard');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [activeView, setActiveView] = useState<ViewType | 'habits'>('dashboard'); // Added 'habits'
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newHabitName, setNewHabitName] = useState(''); // Added
+  const [newHabitName, setNewHabitName] = useState(''); 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [isAddingProject, setIsAddingProject] = useState(false);
@@ -51,7 +50,6 @@ const App: React.FC = () => {
     return { left: total - passed, passed };
   };
 
-  // Habit Streak Logic
   const calculateStreak = (dates: string[]) => {
     if (!dates || dates.length === 0) return 0;
     let streak = 0;
@@ -64,7 +62,6 @@ const App: React.FC = () => {
     return streak;
   };
 
-  // Heatmap Data Logic
   const getHeatmapData = () => {
     const days = [];
     const end = new Date();
@@ -72,7 +69,7 @@ const App: React.FC = () => {
       const d = new Date();
       d.setDate(end.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      const count = habits.filter(h => h.completed_dates?.includes(dateStr)).length;
+      const count = (habits || []).filter(h => h.completed_dates?.includes(dateStr)).length;
       days.push({ date: dateStr, count });
     }
     return days;
@@ -94,7 +91,6 @@ const App: React.FC = () => {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, isChatLoading]);
 
-  // Habit Actions
   const addHabit = async () => {
     if (!newHabitName.trim()) return;
     const { error } = await supabase.from('habits').insert([
@@ -110,7 +106,6 @@ const App: React.FC = () => {
     loadData();
   };
 
-  // Project Actions
   const deleteProject = async (pid: string) => {
     const confirmed = window.confirm("Are you sure you want to delete this project? This cannot be undone.");
     if (!confirmed) return;
@@ -182,7 +177,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#0f172a] text-white font-sans pb-20 lg:pb-0">
-      {/* SIDEBAR */}
       <aside className="hidden lg:flex w-72 bg-black/20 p-6 flex-col gap-8 border-r border-white/5">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
@@ -201,17 +195,17 @@ const App: React.FC = () => {
         {activeView === 'dashboard' && (
           <div className="space-y-8">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-orange-400">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Top Streak</h4>
-                <p className="text-3xl font-bold mt-1">{habits.length > 0 ? Math.max(...habits.map(h => calculateStreak(h.completed_dates)), 0) : 0} 🔥</p>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Projects</h4>
+                <p className="text-3xl font-bold mt-1">{projects.length}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-emerald-400">
                 <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Done</h4>
-                <p className="text-3xl font-bold mt-1">{projects.reduce((acc, p) => acc + p.tasks.filter(t => t.isCompleted).length, 0)}</p>
+                <p className="text-3xl font-bold mt-1">{projects.reduce((acc, p) => acc + (p.tasks || []).filter(t => t.isCompleted).length, 0)}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-rose-400">
                 <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">To Do</h4>
-                <p className="text-3xl font-bold mt-1">{projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0)}</p>
+                <p className="text-3xl font-bold mt-1">{projects.reduce((acc, p) => acc + (p.tasks || []).filter(t => !t.isCompleted).length, 0)}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-orange-400">
                 <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days Left</h4>
@@ -220,7 +214,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* NEW: HEATMAP SECTION */}
             <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
               <h3 className="font-bold mb-4 text-[10px] uppercase tracking-widest text-slate-500">Consistency Heatmap</h3>
               <div className="flex flex-wrap gap-1">
@@ -230,7 +223,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* NEW: QUICK HABITS SECTION */}
             <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
               <h3 className="font-bold mb-4 text-[10px] uppercase tracking-widest text-slate-500">Today's Habits</h3>
               <div className="flex flex-wrap gap-3">
@@ -245,7 +237,7 @@ const App: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {projects.map(p => {
-                const pendingTasks = p.tasks.filter(t => !t.isCompleted);
+                const pendingTasks = (p.tasks || []).filter(t => !t.isCompleted);
                 if (pendingTasks.length === 0) return null;
                 const isExpanded = expandedProjects[p.id];
                 return (
@@ -293,7 +285,7 @@ const App: React.FC = () => {
                     <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done</button>
                 </div>
                 <div className="space-y-2">
-                  {activeP.tasks.filter(t => taskTab === 'pending' ? !t.isCompleted : t.isCompleted).map(t => (
+                  {(activeP.tasks || []).filter(t => taskTab === 'pending' ? !t.isCompleted : t.isCompleted).map(t => (
                       <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />
                   ))}
                 </div>
@@ -314,7 +306,7 @@ const App: React.FC = () => {
                     <div className="w-2 h-full" style={{ backgroundColor: p.color }}></div>
                     <div className="px-4 flex flex-1 justify-between items-center">
                       <h3 className="font-bold text-base truncate pr-2">{p.name}</h3>
-                      <p className="text-slate-500 text-[10px] whitespace-nowrap">{p.tasks.filter(t => !t.isCompleted).length} left</p>
+                      <p className="text-slate-500 text-[10px] whitespace-nowrap">{(p.tasks || []).filter(t => !t.isCompleted).length} left</p>
                     </div>
                   </button>
                 ))}
@@ -324,7 +316,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* NEW: HABITS VIEW */}
         {activeView === 'habits' && (
           <div className="max-w-xl mx-auto space-y-8">
             <h2 className="text-3xl font-bold">Micro-Habits</h2>
@@ -347,7 +338,6 @@ const App: React.FC = () => {
         )}
 
         {activeView === 'calendar' && <Calendar projects={projects} />}
-        
         {activeView === 'chat' && (
           <div className="max-w-3xl mx-auto flex flex-col h-[70vh] bg-black/20 rounded-3xl border border-white/10 p-4 relative">
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
@@ -368,7 +358,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* MOBILE NAV (Updated with Habits) */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-6 py-3 flex justify-between items-center z-50">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
         <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>📁<span className="text-[10px]">Proj</span></button>
@@ -377,7 +366,6 @@ const App: React.FC = () => {
         <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>🤖<span className="text-[10px]">AI</span></button>
       </nav>
 
-      {/* ADD PROJECT MODAL */}
       {isAddingProject && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
           <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
