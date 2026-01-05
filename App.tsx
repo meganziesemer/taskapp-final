@@ -6,68 +6,106 @@ import { TaskItem } from './components/TaskItem';
 import { Calendar } from './components/Calendar';
 import { supabase } from './services/supabaseClient';
 
-interface Habit {
-  id: string;
-  name: string;
-  color: string;
-  completed_dates: string[];
-}
-
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [activeView, setActiveView] = useState<ViewType | 'habits'>('dashboard');
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newHabitName, setNewHabitName] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState('');
+  const [isAddingProject, setIsAddingProject] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
   const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
-  const today = new Date().toISOString().split('T')[0];
-  const [newTaskDate, setNewTaskDate] = useState(today);
-
-  // --- STATS LOGIC ---
-  const getDaysLeft = () => {
-    const now = new Date();
-    const end = new Date(now.getFullYear(), 11, 31);
-    return Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const getTodayString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  const getHeatmapData = () => {
-    const days = [];
-    for (let i = 83; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      const count = habits.filter(h => h.completed_dates?.includes(dateStr)).length;
-      days.push({ date: dateStr, count });
-    }
-    return days;
+  const [newTaskDate, setNewTaskDate] = useState(getTodayString());
+  const [newProject, setNewProject] = useState({ name: '', description: '', color: PROJECT_COLORS[0].hex });
+  
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const activeP = projects.find(p => p.id === selectedProjectId);
+
+  const daysInYear = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), 0, 1);
+    const end = new Date(now.getFullYear(), 11, 31);
+    const total = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const passed = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return { left: total - passed, passed };
   };
 
   const loadData = async () => {
-    const { data: pData } = await supabase.from('projects').select('*');
-    if (pData) setProjects([...pData].sort((a, b) => a.name.localeCompare(b.name)));
-    const { data: hData } = await supabase.from('habits').select('*');
-    if (hData) setHabits(hData);
+    const { data, error } = await supabase.from('projects').select('*');
+    if (!error && data) { 
+      const sortedData = [...data].sort((a, b) => a.name.localeCompare(b.name));
+      setProjects(sortedData); 
+    }
   };
 
   useEffect(() => {
     loadData();
-    const sub = supabase.channel('db-all').on('postgres_changes', { event: '*', schema: 'public' }, () => loadData()).subscribe();
+    const sub = supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => loadData()).subscribe();
     return () => { supabase.removeChannel(sub); };
   }, []);
 
-  // --- TASK ACTIONS ---
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, isChatLoading]);
+
+  // ACTION: Delete Project
+  const deleteProject = async (pid: string) => {
+    const confirmed = window.confirm("Are you sure you want to delete this project and all its tasks? This cannot be undone.");
+    if (!confirmed) return;
+
+    const { error } = await supabase.from('projects').delete().eq('id', pid);
+    if (!error) {
+      setSelectedProjectId(null);
+      loadData();
+    }
+  };
+
+  const toggleProjectExpand = (projectId: string) => {
+    setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }));
+  };
+
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+    const userMsg = { id: crypto.randomUUID(), role: 'user', text: chatInput, timestamp: new Date().toISOString() };
+    setChatHistory(prev => [...prev, userMsg as ChatMessage]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const systemInstruction = `Assistant for Z's Flow. Data: ${JSON.stringify(projects)}.`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: systemInstruction + "\n\nUser: " + userMsg.text }] }] })
+      });
+      const data = await response.json();
+      const responseText = data.candidates[0].content.parts[0].text;
+      setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: responseText, timestamp: new Date().toISOString() } as ChatMessage]);
+    } catch (e) { console.error(e); } finally { setIsChatLoading(false); }
+  };
+
+  const updateProjectName = async (pid: string) => {
+    if (!editedName.trim()) { setIsEditingName(false); return; }
+    const { error } = await supabase.from('projects').update({ name: editedName }).eq('id', pid);
+    if (!error) { setIsEditingName(false); loadData(); }
+  };
+
   const addTask = async (pid: string) => {
-    if (!newTaskTitle.trim()) return;
     const p = projects.find(proj => proj.id === pid);
-    if (!p) return;
-    const newTask = { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate };
-    const updatedTasks = [...p.tasks, newTask];
-    await supabase.from('projects').update({ tasks: updatedTasks }).eq('id', pid);
-    setNewTaskTitle('');
-    loadData();
+    if (!p || !newTaskTitle) return;
+    const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate }];
+    const { error } = await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
+    if (!error) { setNewTaskTitle(''); loadData(); }
   };
 
   const toggleTask = async (pid: string, tid: string) => {
@@ -78,139 +116,92 @@ const App: React.FC = () => {
     loadData();
   };
 
-  // --- HABIT ACTIONS ---
-  const addHabit = async () => {
-    if (!newHabitName.trim()) return;
-    const { error } = await supabase.from('habits').insert([{ name: newHabitName, color: '#f97316', completed_dates: [] }]);
-    if (!error) { setNewHabitName(''); loadData(); }
-  };
-
-  const toggleHabitToday = async (habit: Habit) => {
-    let dates = habit.completed_dates || [];
-    dates = dates.includes(today) ? dates.filter(d => d !== today) : [...dates, today];
-    await supabase.from('habits').update({ completed_dates: dates }).eq('id', habit.id);
+  const deleteTask = async (pid: string, tid: string) => {
+    const p = projects.find(proj => proj.id === pid);
+    if (!p) return;
+    const updated = p.tasks.filter(t => t.id !== tid);
+    await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
     loadData();
   };
 
-  const calculateStreak = (dates: string[]) => {
-    if (!dates) return 0;
-    let streak = 0; let d = new Date();
-    while (dates.includes(d.toISOString().split('T')[0])) {
-      streak++; d.setDate(d.getDate() - 1);
-    }
-    return streak;
+  const addProject = async () => {
+    if (!newProject.name) return;
+    const project = { id: crypto.randomUUID(), name: newProject.name, description: '', color: newProject.color, createdAt: new Date().toISOString(), tasks: [] };
+    const { error } = await supabase.from('projects').insert([project]);
+    if (!error) { setIsAddingProject(false); setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); loadData(); }
   };
 
-  const activeP = projects.find(p => p.id === selectedProjectId);
-
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-[#0f172a] text-white font-sans">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-[#0f172a] text-white font-sans pb-20 lg:pb-0">
       {/* SIDEBAR */}
       <aside className="hidden lg:flex w-72 bg-black/20 p-6 flex-col gap-8 border-r border-white/5">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
+        <div>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
+          <p className="text-[10px] text-slate-500 font-medium italic">make every day count</p>
+        </div>
         <nav className="flex flex-col gap-2">
-          {['dashboard', 'projects', 'habits', 'calendar'].map((v) => (
-            <Button key={v} variant="ghost" onClick={() => {setActiveView(v as any); setSelectedProjectId(null);}} className={`justify-start capitalize ${activeView === v ? 'bg-orange-600 shadow-lg shadow-orange-900/20' : 'text-slate-400'}`}>
+          {['dashboard', 'projects', 'calendar', 'chat'].map((v) => (
+            <Button key={v} variant="ghost" onClick={() => {setActiveView(v as ViewType); setSelectedProjectId(null);}} className={`justify-start capitalize ${activeView === v ? 'bg-orange-600' : ''}`}>
               {v}
             </Button>
           ))}
         </nav>
       </aside>
 
-      <main className="flex-1 p-4 lg:p-10 overflow-y-auto pb-32 lg:pb-10">
+      {/* MOBILE HEADER */}
+      <header className="lg:hidden p-4 border-b border-white/5 bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-40 flex justify-between items-center">
+        <div>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent leading-tight">Z's Flow</h1>
+          <p className="text-[8px] text-slate-500 italic">make every day count</p>
+        </div>
+        <div className="text-[10px] text-emerald-400 uppercase font-bold tracking-tighter">Synced</div>
+      </header>
+
+      <main className="flex-1 p-4 lg:p-10 overflow-y-auto">
         {activeView === 'dashboard' && (
-          <div className="space-y-8 animate-in fade-in duration-500">
-            {/* TOP STATS COMMAND CENTER */}
+          <div className="space-y-8">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white/5 p-6 rounded-[2rem] border border-white/10 relative overflow-hidden group">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">Active Projects</h4>
-                <p className="text-4xl font-black mt-2">{projects.length}</p>
-                <div className="absolute -right-2 -bottom-2 opacity-5 text-6xl">📁</div>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Projects</h4>
+                <p className="text-3xl font-bold mt-1">{projects.length}</p>
               </div>
-              <div className="bg-white/5 p-6 rounded-[2rem] border border-white/10 relative overflow-hidden group">
-                <h4 className="text-emerald-500/50 text-[10px] font-bold uppercase tracking-[0.2em]">Tasks Completed</h4>
-                <p className="text-4xl font-black mt-2 text-emerald-400">{projects.reduce((acc, p) => acc + p.tasks.filter(t => t.isCompleted).length, 0)}</p>
-                <div className="absolute -right-2 -bottom-2 opacity-10 text-6xl text-emerald-500">✓</div>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-emerald-400">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Done</h4>
+                <p className="text-3xl font-bold mt-1">{projects.reduce((acc, p) => acc + p.tasks.filter(t => t.isCompleted).length, 0)}</p>
               </div>
-              <div className="bg-white/5 p-6 rounded-[2rem] border border-white/10 relative overflow-hidden group">
-                <h4 className="text-orange-500/50 text-[10px] font-bold uppercase tracking-[0.2em]">Longest Streak</h4>
-                <p className="text-4xl font-black mt-2 text-orange-400">{habits.length > 0 ? Math.max(...habits.map(h => calculateStreak(h.completed_dates)), 0) : 0} 🔥</p>
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-rose-400">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">To Do</h4>
+                <p className="text-3xl font-bold mt-1">{projects.reduce((acc, p) => acc + p.tasks.filter(t => !t.isCompleted).length, 0)}</p>
               </div>
-              <div className="bg-white/5 p-6 rounded-[2rem] border border-white/10 relative overflow-hidden group">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">Final Countdown</h4>
-                <p className="text-4xl font-black mt-2 text-slate-300">{getDaysLeft()} <span className="text-sm font-normal text-slate-500">days left</span></p>
-              </div>
-            </div>
-
-            {/* HEATMAP / CONSISTENCY GRID */}
-            <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/10">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-xs uppercase tracking-widest text-slate-400">Consistency Heatmap</h3>
-                <div className="flex gap-1 text-[8px] uppercase text-slate-500 font-bold">
-                  <span>Less</span>
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-white/5 rounded-sm"></div>
-                    <div className="w-2 h-2 bg-orange-900 rounded-sm"></div>
-                    <div className="w-2 h-2 bg-orange-600 rounded-sm"></div>
-                    <div className="w-2 h-2 bg-orange-400 rounded-sm"></div>
-                  </div>
-                  <span>More</span>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {getHeatmapData().map((day, i) => (
-                  <div 
-                    key={i} 
-                    className={`w-3.5 h-3.5 rounded-sm transition-all duration-300 ${day.count > 0 ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'bg-white/5'}`} 
-                    title={`${day.date}: ${day.count} items`}
-                    style={{ opacity: day.count > 0 ? 0.3 + (day.count * 0.2) : 1 }}
-                  />
-                ))}
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-orange-400">
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days Left</h4>
+                <p className="text-3xl font-bold mt-1">{daysInYear().left}</p>
+                <p className="text-[10px] text-slate-500 mt-1">({daysInYear().passed} days complete)</p>
               </div>
             </div>
 
-            {/* HABITS QUICK TOGGLE */}
-            <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/10">
-              <h3 className="font-bold mb-6 text-xs uppercase tracking-widest text-slate-400">Today's Habits</h3>
-              <div className="flex flex-wrap gap-3">
-                {habits.map(h => (
-                  <button 
-                    key={h.id} 
-                    onClick={() => toggleHabitToday(h)} 
-                    className={`px-6 py-3 rounded-2xl border-2 transition-all flex items-center gap-3 ${h.completed_dates?.includes(today) ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/5 text-slate-500 hover:border-white/20'}`}
-                  >
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: h.color }}></div>
-                    <span className="text-sm font-bold">{h.name}</span>
-                    {h.completed_dates?.includes(today) && <span className="text-emerald-500">✓</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* PROJECT LIST */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {projects.map(p => {
-                const pending = p.tasks.filter(t => !t.isCompleted);
-                const isExpanded = expandedProjects[p.id] ?? true;
+                const pendingTasks = p.tasks.filter(t => !t.isCompleted);
+                if (pendingTasks.length === 0) return null;
+                const isExpanded = expandedProjects[p.id];
                 return (
-                  <div key={p.id} className="bg-white/5 rounded-[2.5rem] border border-white/10 overflow-hidden group">
-                    <button onClick={() => setExpandedProjects({...expandedProjects, [p.id]: !isExpanded})} className="w-full p-7 flex items-center justify-between hover:bg-white/5 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }}></div>
-                        <h3 className="font-bold text-lg tracking-tight">{p.name}</h3>
-                        <span className="bg-white/5 px-2 py-1 rounded-md text-[10px] text-slate-500 uppercase font-bold">{pending.length} Pending</span>
+                  <div key={p.id} className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden transition-all duration-300">
+                    <button onClick={() => toggleProjectExpand(p.id)} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] transition-colors text-left">
+                      <div className="flex items-center gap-3">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
+                        <h3 className="font-bold text-sm tracking-tight">{p.name}</h3>
+                        <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded-full">{pendingTasks.length} tasks</span>
                       </div>
-                      <span className={`text-slate-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                      <span className={`text-slate-500 text-xs transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
                     </button>
-                    {isExpanded && (
-                      <div className="p-7 pt-0 space-y-3">
-                        {pending.length > 0 ? (
-                          pending.map(t => <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => loadData()} />)
-                        ) : (
-                          <p className="text-xs text-slate-500 italic">No pending tasks.</p>
-                        )}
+                    <div className={`transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[500px] opacity-100 border-t border-white/5' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                      <div className="p-4 pt-2 space-y-2">
+                        {pendingTasks.slice(0, 5).map(t => (
+                          <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
+                        ))}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
@@ -219,79 +210,112 @@ const App: React.FC = () => {
         )}
 
         {activeView === 'projects' && (
-          <div className="max-w-4xl mx-auto space-y-10 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="max-w-4xl mx-auto">
             {activeP ? (
-              <>
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400 hover:text-orange-300">← Back to Overview</Button>
-                  <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5">
-                    <button onClick={() => setTaskTab('pending')} className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${taskTab === 'pending' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Pending Tasks</button>
-                    <button onClick={() => setTaskTab('completed')} className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${taskTab === 'completed' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Completed</button>
-                  </div>
+              <div className="space-y-6 pb-24 lg:pb-0">
+                <div className="flex justify-between items-center">
+                  <Button variant="ghost" onClick={() => {setSelectedProjectId(null); setIsEditingName(false);}} className="p-0 text-orange-400">← Back</Button>
+                  <button 
+                    onClick={() => deleteProject(activeP.id)} 
+                    className="text-[10px] text-slate-600 font-bold uppercase tracking-widest hover:text-rose-500 transition-colors bg-white/5 px-3 py-1.5 rounded-lg border border-white/5"
+                  >
+                    Delete Project
+                  </button>
                 </div>
-                <div>
-                   <h2 className="text-5xl font-black tracking-tighter mb-2">{activeP.name}</h2>
-                   <div className="h-1.5 w-24 rounded-full" style={{ backgroundColor: activeP.color }}></div>
+
+                <div className="flex items-center gap-4 group">
+                    <div className="w-3 h-10 rounded-full" style={{ backgroundColor: activeP.color }}></div>
+                    {isEditingName ? (
+                        <input autoFocus className="bg-white/5 border-b-2 border-orange-500 text-3xl font-bold outline-none px-2 py-1 w-full" value={editedName} onChange={(e) => setEditedName(e.target.value)} onBlur={() => updateProjectName(activeP.id)} onKeyDown={(e) => e.key === 'Enter' && updateProjectName(activeP.id)} />
+                    ) : (
+                        <h2 className="text-3xl font-bold cursor-pointer hover:text-orange-400 transition-colors" onClick={() => { setIsEditingName(true); setEditedName(activeP.name); }}>
+                            {activeP.name} <span className="text-[10px] text-slate-600 opacity-50 ml-2">(edit)</span>
+                        </h2>
+                    )}
                 </div>
-                <div className="space-y-3">
+
+                <div className="flex gap-4 border-b border-white/10">
+                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>To Do</button>
+                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done</button>
+                </div>
+
+                <div className="space-y-2">
                   {activeP.tasks.filter(t => taskTab === 'pending' ? !t.isCompleted : t.isCompleted).map(t => (
-                    <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={() => toggleTask(activeP.id, t.id)} onDelete={() => loadData()} />
+                      <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />
                   ))}
                 </div>
-                {taskTab === 'pending' && (
-                  <div className="bg-white/5 p-6 rounded-[2rem] border border-white/10 flex flex-col sm:flex-row gap-3 mt-12 group focus-within:border-orange-500/50 transition-colors">
-                    <input className="flex-1 bg-transparent px-4 py-2 outline-none text-lg" placeholder="What needs to be done?" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} onKeyPress={e => e.key === 'Enter' && addTask(activeP.id)} />
-                    <Button className="bg-orange-600 px-10 py-4 rounded-xl font-bold shadow-lg shadow-orange-600/20" onClick={() => addTask(activeP.id)}>Add Task</Button>
+
+                <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none text-white" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
+                    <div className="flex gap-2">
+                      <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
+                      <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
+                    </div>
                   </div>
-                )}
-              </>
+                </div>
+              </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {projects.map(p => (
-                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 p-10 rounded-[3rem] border border-white/10 flex flex-col items-center gap-6 hover:border-orange-500 transition-all group hover:-translate-y-2">
-                    <div className="w-4 h-4 rounded-full shadow-[0_0_15px_rgba(255,255,255,0.1)] group-hover:scale-150 transition-transform duration-500" style={{ backgroundColor: p.color }}></div>
-                    <span className="font-bold text-xl tracking-tight">{p.name}</span>
+                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 h-16 rounded-2xl border border-white/10 text-left hover:border-orange-500/30 transition-all flex items-center overflow-hidden">
+                    <div className="w-2 h-full" style={{ backgroundColor: p.color }}></div>
+                    <div className="px-4 flex flex-1 justify-between items-center">
+                      <h3 className="font-bold text-base truncate pr-2">{p.name}</h3>
+                      <p className="text-slate-500 text-[10px] whitespace-nowrap">{p.tasks.filter(t => !t.isCompleted).length} left</p>
+                    </div>
                   </button>
                 ))}
+                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/5 h-16 rounded-2xl text-slate-500 flex items-center justify-center gap-2 text-sm">+ New Project</button>
               </div>
             )}
           </div>
         )}
 
-        {/* CALENDAR & HABITS TABS (Simplified for brevity but fully functional) */}
-        {activeView === 'habits' && (
-          <div className="max-w-xl mx-auto space-y-10 animate-in fade-in">
-            <h2 className="text-4xl font-black">Habit Mastery</h2>
-            <div className="bg-white/5 p-2 rounded-[2rem] border border-white/10 flex gap-2">
-              <input className="flex-1 bg-transparent px-6 py-4 outline-none" placeholder="Enter a micro-habit..." value={newHabitName} onChange={e => setNewHabitName(e.target.value)} onKeyPress={e => e.key === 'Enter' && addHabit()} />
-              <Button className="bg-orange-600 px-10 rounded-[1.5rem]" onClick={addHabit}>Create</Button>
-            </div>
-            <div className="grid gap-4">
-              {habits.map(h => (
-                <div key={h.id} className="bg-white/5 p-8 rounded-[2rem] border border-white/10 flex items-center justify-between group">
-                  <div className="flex items-center gap-6">
-                    <div className="w-1.5 h-12 rounded-full" style={{ backgroundColor: h.color }}></div>
-                    <div>
-                        <h4 className="font-bold text-xl">{h.name}</h4>
-                        <p className="text-xs text-orange-500 font-black uppercase tracking-widest mt-1">{calculateStreak(h.completed_dates || [])} Day Streak 🔥</p>
-                    </div>
+        {activeView === 'calendar' && <Calendar projects={projects} />}
+        
+        {activeView === 'chat' && (
+          <div className="max-w-3xl mx-auto flex flex-col h-[70vh] bg-black/20 rounded-3xl border border-white/10 p-4 relative">
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+              {chatHistory.map(m => (
+                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>
+                    {m.text}
                   </div>
-                  <button onClick={() => toggleHabitToday(h)} className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all ${h.completed_dates?.includes(today) ? 'bg-emerald-500 border-emerald-500 scale-110 shadow-lg shadow-emerald-500/20' : 'border-white/10 hover:border-white/40'}`}>
-                    <span className="text-2xl">{h.completed_dates?.includes(today) ? '✓' : ''}</span>
-                  </button>
                 </div>
               ))}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="flex gap-2">
+              <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} placeholder="Ask AI..." />
+              <Button className="bg-orange-600 px-6" onClick={handleSendMessage} disabled={isChatLoading}>Send</Button>
             </div>
           </div>
         )}
       </main>
 
-      {/* MOBILE TAB BAR */}
-      <nav className="lg:hidden fixed bottom-6 left-6 right-6 bg-slate-900/80 backdrop-blur-2xl border border-white/10 rounded-[2rem] px-8 py-4 flex justify-between items-center z-50 shadow-2xl">
-        <button onClick={() => setActiveView('dashboard')} className={activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}>🏠</button>
-        <button onClick={() => setActiveView('projects')} className={activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}>📁</button>
-        <button onClick={() => setActiveView('habits')} className={activeView === 'habits' ? 'text-orange-400' : 'text-slate-500'}>⚡</button>
+      {/* MOBILE NAV */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
+        <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
+        <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>📁<span className="text-[10px]">Projects</span></button>
+        <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>📅<span className="text-[10px]">Cal</span></button>
+        <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>🤖<span className="text-[10px]">AI</span></button>
       </nav>
+
+      {/* ADD MODAL */}
+      {isAddingProject && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
+          <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
+            <h3 className="text-2xl font-bold mb-4">New Project</h3>
+            <input className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 mb-4 outline-none text-white" placeholder="Project Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
+            <div className="flex justify-between mb-8 px-2">
+                {PROJECT_COLORS.map(c => <button key={c.hex} onClick={() => setNewProject({...newProject, color: c.hex})} className={`w-8 h-8 rounded-full ${newProject.color === c.hex ? 'ring-4 ring-white' : 'opacity-40'}`} style={{ backgroundColor: c.hex }} />)}
+            </div>
+            <Button className="w-full bg-orange-600 py-4 font-bold" onClick={addProject}>Create</Button>
+            <Button variant="ghost" className="w-full mt-2" onClick={() => setIsAddingProject(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
