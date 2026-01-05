@@ -18,7 +18,6 @@ const App: React.FC = () => {
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
-  // New state for collapsible dashboard projects
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
   const getTodayString = () => {
@@ -56,10 +55,51 @@ const App: React.FC = () => {
     return () => { supabase.removeChannel(sub); };
   }, []);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, isChatLoading]);
 
   const toggleProjectExpand = (projectId: string) => {
     setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }));
+  };
+
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+    
+    const userMsg = { id: crypto.randomUUID(), role: 'user', text: chatInput, timestamp: new Date().toISOString() };
+    setChatHistory(prev => [...prev, userMsg as ChatMessage]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      
+      const systemInstruction = `You are the AI assistant for Z's Flow, a productivity app. 
+      You help the user manage their projects and tasks. 
+      Current user data: ${JSON.stringify(projects)}. 
+      Be concise, encouraging, and helpful.`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: systemInstruction + "\n\nUser Question: " + userMsg.text }] }]
+        })
+      });
+
+      const data = await response.json();
+      const responseText = data.candidates[0].content.parts[0].text;
+      
+      setChatHistory(prev => [...prev, { 
+        id: crypto.randomUUID(), 
+        role: 'model', 
+        text: responseText, 
+        timestamp: new Date().toISOString() 
+      } as ChatMessage]);
+    } catch (e) {
+      console.error("AI Error:", e);
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
   const updateProjectName = async (pid: string) => {
@@ -227,7 +267,50 @@ const App: React.FC = () => {
         )}
 
         {activeView === 'calendar' && <Calendar projects={projects} />}
-        {activeView === 'chat' && <div className="p-10 text-center text-slate-500">AI Chat Ready.</div>}
+        
+        {activeView === 'chat' && (
+          <div className="max-w-3xl mx-auto flex flex-col h-[70vh] bg-black/20 rounded-3xl border border-white/10 p-4 relative">
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
+              {chatHistory.length === 0 && (
+                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
+                  <span className="text-4xl">🤖</span>
+                  <p className="text-sm">Ask me anything about your projects or tasks!</p>
+                </div>
+              )}
+              {chatHistory.map(m => (
+                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600 shadow-lg shadow-orange-900/20' : 'bg-white/5 border border-white/10'}`}>
+                    {m.text}
+                  </div>
+                </div>
+              )}
+              {isChatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white/5 border border-white/10 p-4 rounded-2xl">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></div>
+                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="flex gap-2">
+              <input 
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-500/50 transition-colors" 
+                value={chatInput} 
+                onChange={e => setChatInput(e.target.value)} 
+                onKeyPress={e => e.key === 'Enter' && handleSendMessage()} 
+                placeholder="Ask AI..." 
+              />
+              <Button className="bg-orange-600 px-6" onClick={handleSendMessage} disabled={isChatLoading}>
+                Send
+              </Button>
+            </div>
+          </div>
+        )}
       </main>
 
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
