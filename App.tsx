@@ -1,4 +1,4 @@
-  import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Project, Task, ViewType, ChatMessage } from './types';
 import { PROJECT_COLORS } from './constants';
 import { Button } from './components/Button';
@@ -43,11 +43,11 @@ const App: React.FC = () => {
 
   const daysInYear = () => {
     const now = new Date();
-    const start = new Date(now.getFullYear(), 0, 1);
-    const end = new Date(now.getFullYear(), 11, 31);
-    const total = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const start = new Date(2025, 0, 1);
+    const end = new Date(2025, 11, 31);
+    const total = 365;
     const passed = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    return { left: total - passed, passed };
+    return { left: Math.max(0, total - passed), passed: Math.max(0, passed) };
   };
 
   const calculateStreak = (dates: string[]) => {
@@ -62,21 +62,21 @@ const App: React.FC = () => {
     return streak;
   };
 
-  // Helper to determine the color of the heatmap square based on your requested scale
   const getHeatmapColor = (count: number) => {
     if (count === 0) return 'bg-white/5';
-    if (count === 1) return 'bg-rose-500';           // Red
-    if (count >= 2 && count <= 3) return 'bg-orange-500'; // Orange
-    if (count >= 4 && count <= 5) return 'bg-yellow-400'; // Yellow
-    return 'bg-emerald-500';                        // Green (5+)
+    if (count === 1) return 'bg-rose-500';
+    if (count >= 2 && count <= 3) return 'bg-orange-500';
+    if (count >= 4 && count <= 5) return 'bg-yellow-400';
+    return 'bg-emerald-500';
   };
 
+  // Fixed 2025 Grid Logic
   const getHeatmapData = () => {
     const days = [];
-    const end = new Date();
-    for (let i = 83; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(end.getDate() - i);
+    const start = new Date(2025, 0, 1); // Jan 1st 2025
+    for (let i = 0; i < 365; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
       const dateStr = d.toISOString().split('T')[0];
       const count = (habits || []).filter(h => h.completed_dates?.includes(dateStr)).length;
       days.push({ date: dateStr, count });
@@ -87,7 +87,6 @@ const App: React.FC = () => {
   const loadData = async () => {
     const { data: pData } = await supabase.from('projects').select('*');
     if (pData) setProjects([...pData].sort((a, b) => a.name.localeCompare(b.name)));
-    
     const { data: hData } = await supabase.from('habits').select('*');
     if (hData) setHabits(hData);
   };
@@ -108,29 +107,26 @@ const App: React.FC = () => {
     if (!error) { setNewHabitName(''); loadData(); }
   };
 
-  const toggleHabitToday = async (habit: Habit) => {
+  // Toggle for specific dates (Back-logging support)
+  const toggleHabitDate = async (habit: Habit, dateStr: string) => {
     let dates = habit.completed_dates || [];
-    dates = dates.includes(today) ? dates.filter(d => d !== today) : [...dates, today];
+    dates = dates.includes(dateStr) ? dates.filter(d => d !== dateStr) : [...dates, dateStr];
     await supabase.from('habits').update({ completed_dates: dates }).eq('id', habit.id);
     loadData();
   };
 
   const deleteHabit = async (id: string) => {
-    const confirmed = window.confirm("Delete this habit?");
-    if (!confirmed) return;
-    const { error } = await supabase.from('habits').delete().eq('id', id);
-    if (!error) loadData();
+    if (window.confirm("Delete this habit?")) {
+      const { error } = await supabase.from('habits').delete().eq('id', id);
+      if (!error) loadData();
+    }
   };
 
   const deleteProject = async (pid: string) => {
-    const confirmed = window.confirm("Are you sure you want to delete this project? This cannot be undone.");
-    if (!confirmed) return;
-    const { error } = await supabase.from('projects').delete().eq('id', pid);
-    if (!error) { setSelectedProjectId(null); loadData(); }
-  };
-
-  const toggleProjectExpand = (projectId: string) => {
-    setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }));
+    if (window.confirm("Delete project?")) {
+      const { error } = await supabase.from('projects').delete().eq('id', pid);
+      if (!error) { setSelectedProjectId(null); loadData(); }
+    }
   };
 
   const handleSendMessage = async () => {
@@ -149,23 +145,22 @@ const App: React.FC = () => {
         body: JSON.stringify({ contents: [{ parts: [{ text: systemInstruction + "\n\nUser: " + userMsg.text }] }] })
       });
       const data = await response.json();
-      const responseText = data.candidates[0].content.parts[0].text;
-      setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: responseText, timestamp: new Date().toISOString() } as ChatMessage]);
+      setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: data.candidates[0].content.parts[0].text, timestamp: new Date().toISOString() } as ChatMessage]);
     } catch (e) { console.error(e); } finally { setIsChatLoading(false); }
   };
 
   const updateProjectName = async (pid: string) => {
     if (!editedName.trim()) { setIsEditingName(false); return; }
-    const { error } = await supabase.from('projects').update({ name: editedName }).eq('id', pid);
-    if (!error) { setIsEditingName(false); loadData(); }
+    await supabase.from('projects').update({ name: editedName }).eq('id', pid);
+    setIsEditingName(false); loadData();
   };
 
   const addTask = async (pid: string) => {
     const p = projects.find(proj => proj.id === pid);
     if (!p || !newTaskTitle) return;
     const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate }];
-    const { error } = await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
-    if (!error) { setNewTaskTitle(''); loadData(); }
+    await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
+    setNewTaskTitle(''); loadData();
   };
 
   const toggleTask = async (pid: string, tid: string) => {
@@ -187,8 +182,8 @@ const App: React.FC = () => {
   const addProject = async () => {
     if (!newProject.name) return;
     const project = { id: crypto.randomUUID(), name: newProject.name, description: '', color: newProject.color, createdAt: new Date().toISOString(), tasks: [] };
-    const { error } = await supabase.from('projects').insert([project]);
-    if (!error) { setIsAddingProject(false); setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); loadData(); }
+    await supabase.from('projects').insert([project]);
+    setIsAddingProject(false); setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); loadData();
   };
 
   return (
@@ -224,15 +219,15 @@ const App: React.FC = () => {
                 <p className="text-3xl font-bold mt-1">{projects.reduce((acc, p) => acc + (p.tasks || []).filter(t => !t.isCompleted).length, 0)}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-orange-400">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days Left</h4>
-                <p className="text-3xl font-bold mt-1">{daysInYear().left}</p>
-                <p className="text-[10px] text-slate-500 mt-1">({daysInYear().passed} days complete)</p>
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days in 2025</h4>
+                <p className="text-3xl font-bold mt-1">{daysInYear().passed}</p>
+                <p className="text-[10px] text-slate-500 mt-1">({daysInYear().left} remaining)</p>
               </div>
             </div>
 
             <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-500">Consistency Heatmap</h3>
+                <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-500">2025 Habit Grid</h3>
                 <div className="flex gap-2 items-center text-[8px] uppercase tracking-tighter text-slate-600 font-bold">
                   <span>Less</span>
                   <div className="w-2 h-2 rounded-sm bg-rose-500"></div>
@@ -242,10 +237,10 @@ const App: React.FC = () => {
                   <span>More</span>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1 content-start">
                 {getHeatmapData().map((day, i) => (
                   <div key={i} 
-                    className={`w-3 h-3 rounded-sm transition-colors duration-500 ${getHeatmapColor(day.count)}`} 
+                    className={`w-2.5 h-2.5 rounded-sm transition-colors duration-500 ${getHeatmapColor(day.count)}`} 
                     title={`${day.date}: ${day.count} habits`} />
                 ))}
               </div>
@@ -255,30 +250,29 @@ const App: React.FC = () => {
               <h3 className="font-bold mb-4 text-[10px] uppercase tracking-widest text-slate-500">Today's Habits</h3>
               <div className="flex flex-wrap gap-3">
                 {habits.map(h => (
-                  <button key={h.id} onClick={() => toggleHabitToday(h)} className={`px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${h.completed_dates?.includes(today) ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10 text-slate-400'}`}>
+                  <button key={h.id} onClick={() => toggleHabitDate(h, today)} className={`px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${h.completed_dates?.includes(today) ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10 text-slate-400'}`}>
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: h.color }}></span>
                     <span className="text-xs font-bold">{h.name}</span>
                   </button>
                 ))}
               </div>
             </div>
-
+            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {projects.map(p => {
                 const pendingTasks = (p.tasks || []).filter(t => !t.isCompleted);
                 if (pendingTasks.length === 0) return null;
                 const isExpanded = expandedProjects[p.id];
                 return (
-                  <div key={p.id} className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden transition-all duration-300">
-                    <button onClick={() => toggleProjectExpand(p.id)} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] transition-colors text-left">
+                  <div key={p.id} className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                    <button onClick={() => setExpandedProjects(prev => ({ ...prev, [p.id]: !prev[p.id] }))} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] text-left">
                       <div className="flex items-center gap-3">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
-                        <h3 className="font-bold text-sm tracking-tight">{p.name}</h3>
-                        <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded-full">{pendingTasks.length} tasks</span>
+                        <h3 className="font-bold text-sm">{p.name}</h3>
                       </div>
-                      <span className={`text-slate-500 text-xs transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                      <span className={`text-slate-500 text-xs ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
                     </button>
-                    <div className={`${isExpanded ? 'block' : 'hidden'} p-4 pt-2 space-y-2`}>
+                    <div className={`${isExpanded ? 'block' : 'hidden'} p-4 pt-0 space-y-2`}>
                         {pendingTasks.slice(0, 5).map(t => (
                           <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
                         ))}
@@ -295,29 +289,27 @@ const App: React.FC = () => {
             {activeP ? (
               <div className="space-y-6 pb-24 lg:pb-0">
                 <div className="flex justify-between items-center">
-                  <Button variant="ghost" onClick={() => {setSelectedProjectId(null); setIsEditingName(false);}} className="p-0 text-orange-400">← Back</Button>
-                  <button onClick={() => deleteProject(activeP.id)} className="text-[10px] text-slate-600 font-bold uppercase tracking-widest hover:text-rose-500 transition-colors bg-white/5 px-3 py-1.5 rounded-lg border border-white/5">Delete Project</button>
+                  <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400">← Back</Button>
+                  <button onClick={() => deleteProject(activeP.id)} className="text-[10px] text-slate-600 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 uppercase font-bold">Delete Project</button>
                 </div>
-                <div className="flex items-center gap-4 group">
+                <div className="flex items-center gap-4">
                     <div className="w-3 h-10 rounded-full" style={{ backgroundColor: activeP.color }}></div>
                     {isEditingName ? (
-                        <input autoFocus className="bg-white/5 border-b-2 border-orange-500 text-3xl font-bold outline-none px-2 py-1 w-full" value={editedName} onChange={(e) => setEditedName(e.target.value)} onBlur={() => updateProjectName(activeP.id)} onKeyDown={(e) => e.key === 'Enter' && updateProjectName(activeP.id)} />
+                        <input autoFocus className="bg-transparent border-b-2 border-orange-500 text-3xl font-bold outline-none w-full" value={editedName} onChange={(e) => setEditedName(e.target.value)} onBlur={() => updateProjectName(activeP.id)} onKeyDown={(e) => e.key === 'Enter' && updateProjectName(activeP.id)} />
                     ) : (
-                        <h2 className="text-3xl font-bold cursor-pointer hover:text-orange-400 transition-colors" onClick={() => { setIsEditingName(true); setEditedName(activeP.name); }}>
-                            {activeP.name} <span className="text-[10px] text-slate-600 opacity-50 ml-2">(edit)</span>
-                        </h2>
+                        <h2 className="text-3xl font-bold cursor-pointer" onClick={() => { setIsEditingName(true); setEditedName(activeP.name); }}>{activeP.name}</h2>
                     )}
                 </div>
                 <div className="flex gap-4 border-b border-white/10">
-                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>To Do</button>
-                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold transition-colors ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done</button>
+                    <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>To Do</button>
+                    <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done</button>
                 </div>
                 <div className="space-y-2">
                   {(activeP.tasks || []).filter(t => taskTab === 'pending' ? !t.isCompleted : t.isCompleted).map(t => (
                       <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />
                   ))}
                 </div>
-                <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl">
+                <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl">
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none text-white" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
                     <div className="flex gap-2">
@@ -330,11 +322,11 @@ const App: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {projects.map(p => (
-                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 h-16 rounded-2xl border border-white/10 text-left hover:border-orange-500/30 transition-all flex items-center overflow-hidden">
+                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 h-16 rounded-2xl border border-white/10 text-left hover:border-orange-500/30 flex items-center overflow-hidden">
                     <div className="w-2 h-full" style={{ backgroundColor: p.color }}></div>
-                    <div className="px-4 flex flex-1 justify-between items-center">
+                    <div className="px-4 flex flex-1 justify-between items-center truncate">
                       <h3 className="font-bold text-base truncate pr-2">{p.name}</h3>
-                      <p className="text-slate-500 text-[10px] whitespace-nowrap">{(p.tasks || []).filter(t => !t.isCompleted).length} left</p>
+                      <p className="text-slate-500 text-[10px]">{(p.tasks || []).filter(t => !t.isCompleted).length} left</p>
                     </div>
                   </button>
                 ))}
@@ -355,13 +347,17 @@ const App: React.FC = () => {
               {habits.map(h => (
                 <div key={h.id} className="bg-white/5 p-5 rounded-2xl border border-white/10 flex items-center justify-between group">
                   <div className="flex items-center gap-4">
-                    <button onClick={() => deleteHabit(h.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-500 transition-all text-xs font-bold uppercase tracking-widest">Delete</button>
+                    <button onClick={() => deleteHabit(h.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-500 text-xs font-bold transition-all">DELETE</button>
                     <div>
                       <h4 className="font-bold">{h.name}</h4>
-                      <p className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">{calculateStreak(h.completed_dates || [])} Day Streak 🔥</p>
+                      <p className="text-[10px] text-orange-400 font-bold uppercase">{calculateStreak(h.completed_dates || [])} Day Streak 🔥</p>
                     </div>
                   </div>
-                  <button onClick={() => toggleHabitToday(h)} className={`w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all ${h.completed_dates?.includes(today) ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'border-white/10 text-transparent hover:border-white/30'}`}>✓</button>
+                  <div className="flex items-center gap-3">
+                    {/* Back-logging Date Picker */}
+                    <input type="date" className="bg-white/5 border border-white/10 rounded px-2 py-1 text-[10px] opacity-0 group-hover:opacity-100 transition-all cursor-pointer" onChange={(e) => toggleHabitDate(h, e.target.value)} title="Log for past date" />
+                    <button onClick={() => toggleHabitDate(h, today)} className={`w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all ${h.completed_dates?.includes(today) ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-white/10 text-transparent'}`}>✓</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -374,9 +370,7 @@ const App: React.FC = () => {
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
               {chatHistory.map(m => (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>
-                    {m.text}
-                  </div>
+                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>{m.text}</div>
                 </div>
               ))}
               <div ref={chatEndRef} />
@@ -389,6 +383,7 @@ const App: React.FC = () => {
         )}
       </main>
 
+      {/* Mobile Nav */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-6 py-3 flex justify-between items-center z-50">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
         <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>📁<span className="text-[10px]">Proj</span></button>
