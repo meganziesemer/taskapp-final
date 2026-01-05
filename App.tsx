@@ -106,6 +106,13 @@ const App: React.FC = () => {
     loadData();
   };
 
+  const deleteHabit = async (id: string) => {
+    const confirmed = window.confirm("Delete this habit?");
+    if (!confirmed) return;
+    const { error } = await supabase.from('habits').delete().eq('id', id);
+    if (!error) loadData();
+  };
+
   const deleteProject = async (pid: string) => {
     const confirmed = window.confirm("Are you sure you want to delete this project? This cannot be undone.");
     if (!confirmed) return;
@@ -325,10 +332,13 @@ const App: React.FC = () => {
             </div>
             <div className="space-y-3">
               {habits.map(h => (
-                <div key={h.id} className="bg-white/5 p-5 rounded-2xl border border-white/10 flex items-center justify-between">
-                  <div>
-                    <h4 className="font-bold">{h.name}</h4>
-                    <p className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">{calculateStreak(h.completed_dates || [])} Day Streak 🔥</p>
+                <div key={h.id} className="bg-white/5 p-5 rounded-2xl border border-white/10 flex items-center justify-between group">
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => deleteHabit(h.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-500 transition-all text-xs font-bold uppercase tracking-widest">Delete</button>
+                    <div>
+                      <h4 className="font-bold">{h.name}</h4>
+                      <p className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">{calculateStreak(h.completed_dates || [])} Day Streak 🔥</p>
+                    </div>
                   </div>
                   <button onClick={() => toggleHabitToday(h)} className={`w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all ${h.completed_dates?.includes(today) ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg' : 'border-white/10 text-transparent hover:border-white/30'}`}>✓</button>
                 </div>
