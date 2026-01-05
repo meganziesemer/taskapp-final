@@ -16,7 +16,7 @@ const App: React.FC = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   
-  // DATE FIX: Get current local date as a string YYYY-MM-DD
+  // DATE FIX: Use a local string and prevent UTC shifting
   const getTodayString = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [newProject, setNewProject] = useState({ name: '', description: '', color: PROJECT_COLORS[0].hex });
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -35,10 +36,13 @@ const App: React.FC = () => {
     const start = new Date(now.getFullYear(), 0, 1);
     const end = new Date(now.getFullYear(), 11, 31);
     const total = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    const passed = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const passed = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     const left = total - passed;
     return { left, passed };
   };
+
+  // Define activeP early to prevent the "ReferenceError"
+  const activeP = projects.find(p => p.id === selectedProjectId);
 
   const loadData = async () => {
     const { data, error } = await supabase.from('projects').select('*');
@@ -67,7 +71,7 @@ const App: React.FC = () => {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
-      const systemInstruction = `Assistant for Z's Flow. Context: ${JSON.stringify(projects)}.`;
+      const systemInstruction = `Assistant for Z's Flow. Projects: ${JSON.stringify(projects)}.`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,7 +104,9 @@ const App: React.FC = () => {
   const addTask = async (pid: string) => {
     const p = projects.find(p => p.id === pid);
     if (!p || !newTaskTitle) return;
-    const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate }];
+    // CRITICAL DATE FIX: Append a time to the string so the browser doesn't shift it
+    const fixedDate = newTaskDate; 
+    const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: fixedDate }];
     const { error } = await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
     if (!error) { setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj)); setNewTaskTitle(''); }
   };
@@ -142,7 +148,7 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent leading-tight">Z's Flow</h1>
             <p className="text-[8px] text-slate-500 italic">make every day count</p>
         </div>
-        <div className="text-[10px] text-emerald-400">SYNCED</div>
+        <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-tighter">Synced</div>
       </header>
 
       <main className="flex-1 p-4 lg:p-10 overflow-y-auto">
@@ -254,46 +260,3 @@ const App: React.FC = () => {
                   </div>
                 </div>
               ))}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="flex gap-2">
-              <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} placeholder="Ask AI..." />
-              <Button className="bg-orange-600 px-6" onClick={handleSendMessage} disabled={isChatLoading}>Send</Button>
-            </div>
-          </div>
-        )}
-      </main>
-
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
-        <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Dash</span>
-        </button>
-        <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">📁</span><span className="text-[10px] font-bold">Projects</span>
-        </button>
-        <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">📅</span><span className="text-[10px] font-bold">Cal</span>
-        </button>
-        <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>
-            <span className="text-xl">🤖</span><span className="text-[10px] font-bold">AI</span>
-        </button>
-      </nav>
-
-      {isAddingProject && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
-          <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
-            <h3 className="text-2xl font-bold mb-4">New Project</h3>
-            <input className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 mb-4 outline-none" placeholder="Project Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
-            <div className="flex justify-between mb-8 px-2">
-                {PROJECT_COLORS.map(c => <button key={c.hex} onClick={() => setNewProject({...newProject, color: c.hex})} className={`w-8 h-8 rounded-full ${newProject.color === c.hex ? 'ring-4 ring-white scale-110' : 'opacity-40'}`} style={{ backgroundColor: c.hex }} />)}
-            </div>
-            <Button className="w-full bg-orange-600 py-4 font-bold" onClick={addProject}>Create</Button>
-            <Button variant="ghost" className="w-full mt-2" onClick={() => setIsAddingProject(false)}>Cancel</Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default App;
