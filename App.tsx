@@ -16,28 +16,28 @@ const App: React.FC = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   
-  // Strict string-based date to prevent timezone shifting
+  // DATE FIX: Get current local date as a string YYYY-MM-DD
   const getTodayString = () => {
     const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
   const [newTaskDate, setNewTaskDate] = useState(getTodayString()); 
   const [newProject, setNewProject] = useState({ name: '', description: '', color: PROJECT_COLORS[0].hex });
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const [lastSynced, setLastSynced] = useState<Date>(new Date());
-  const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const daysRemainingInYear = () => {
-    const today = new Date();
-    const endOfYear = new Date(today.getFullYear(), 11, 31);
-    return Math.ceil((endOfYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  // Stats Logic
+  const daysInYear = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), 0, 1);
+    const end = new Date(now.getFullYear(), 11, 31);
+    const total = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const passed = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const left = total - passed;
+    return { left, passed };
   };
 
   const loadData = async () => {
@@ -45,7 +45,6 @@ const App: React.FC = () => {
     if (!error && data) { 
       const sortedData = [...data].sort((a, b) => a.name.localeCompare(b.name));
       setProjects(sortedData); 
-      setLastSynced(new Date()); 
     }
   };
 
@@ -59,7 +58,6 @@ const App: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory, isChatLoading]);
 
-  // AI logic remains exactly as you had it
   const handleSendMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
     const userMsg = { id: crypto.randomUUID(), role: 'user', text: chatInput, timestamp: new Date().toISOString() };
@@ -69,7 +67,7 @@ const App: React.FC = () => {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
-      const systemInstruction = `Assistant for Z's Flow. Projects: ${JSON.stringify(projects)}.`;
+      const systemInstruction = `Assistant for Z's Flow. Context: ${JSON.stringify(projects)}.`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,27 +77,12 @@ const App: React.FC = () => {
       const responseText = data.candidates[0].content.parts[0].text;
       setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: responseText, timestamp: new Date().toISOString() } as ChatMessage]);
     } catch (e: any) { 
-      setChatHistory(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Connection issue.", timestamp: new Date().toISOString() } as ChatMessage]);
+      setIsChatLoading(false);
     } finally { setIsChatLoading(false); }
   };
 
-  const addProject = async () => {
-    if (!newProject.name) return;
-    const project = { id: crypto.randomUUID(), name: newProject.name, description: '', color: newProject.color, createdAt: new Date().toISOString(), tasks: [] };
-    const { error } = await supabase.from('projects').insert([project]);
-    if (!error) { 
-      setIsAddingProject(false); 
-      setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); 
-      loadData();
-    }
-  };
-
-  // NEW: Update Project Name Function
   const updateProjectName = async (pid: string) => {
-    if (!editedName.trim()) {
-        setIsEditingName(false);
-        return;
-    }
+    if (!editedName.trim()) { setIsEditingName(false); return; }
     const { error } = await supabase.from('projects').update({ name: editedName }).eq('id', pid);
     if (!error) {
         setProjects(prev => prev.map(p => p.id === pid ? { ...p, name: editedName } : p).sort((a, b) => a.name.localeCompare(b.name)));
@@ -107,16 +90,16 @@ const App: React.FC = () => {
     }
   };
 
-  const deleteProject = async (pid: string) => {
-    if (!window.confirm("Delete this entire project?")) return;
-    const { error } = await supabase.from('projects').delete().eq('id', pid);
-    if (!error) { setProjects(prev => prev.filter(p => p.id !== pid)); setSelectedProjectId(null); }
+  const addProject = async () => {
+    if (!newProject.name) return;
+    const project = { id: crypto.randomUUID(), name: newProject.name, description: '', color: newProject.color, createdAt: new Date().toISOString(), tasks: [] };
+    const { error } = await supabase.from('projects').insert([project]);
+    if (!error) { setIsAddingProject(false); setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); loadData(); }
   };
 
   const addTask = async (pid: string) => {
     const p = projects.find(p => p.id === pid);
     if (!p || !newTaskTitle) return;
-    // We send the date string exactly as "YYYY-MM-DD"
     const updated = [...p.tasks, { id: crypto.randomUUID(), projectId: pid, title: newTaskTitle, isCompleted: false, dueDate: newTaskDate }];
     const { error } = await supabase.from('projects').update({ tasks: updated }).eq('id', pid);
     if (!error) { setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj)); setNewTaskTitle(''); }
@@ -138,13 +121,13 @@ const App: React.FC = () => {
     if (!error) setProjects(prev => prev.map(proj => proj.id === pid ? { ...proj, tasks: updated } : proj));
   };
 
-  const activeP = projects.find(p => p.id === selectedProjectId);
-
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#0f172a] text-white font-sans pb-20 lg:pb-0">
-      {/* SIDEBAR */}
       <aside className="hidden lg:flex w-72 bg-black/20 p-6 flex-col gap-8 border-r border-white/5">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
+        <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
+            <p className="text-[10px] text-slate-500 font-medium italic">make every day count</p>
+        </div>
         <nav className="flex flex-col gap-2">
           {['dashboard', 'projects', 'calendar', 'chat'].map((v) => (
             <Button key={v} variant="ghost" onClick={() => {setActiveView(v as ViewType); setSelectedProjectId(null);}} className={`justify-start capitalize ${activeView === v ? 'bg-orange-600' : ''}`}>
@@ -154,9 +137,11 @@ const App: React.FC = () => {
         </nav>
       </aside>
 
-      {/* MOBILE HEADER */}
       <header className="lg:hidden p-4 border-b border-white/5 bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-40 flex justify-between items-center">
-        <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
+        <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent leading-tight">Z's Flow</h1>
+            <p className="text-[8px] text-slate-500 italic">make every day count</p>
+        </div>
         <div className="text-[10px] text-emerald-400">SYNCED</div>
       </header>
 
@@ -178,7 +163,8 @@ const App: React.FC = () => {
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
                 <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days Left</h4>
-                <p className="text-3xl font-bold mt-1 text-orange-400">{daysRemainingInYear()}</p>
+                <p className="text-3xl font-bold mt-1 text-orange-400">{daysInYear().left}</p>
+                <p className="text-[10px] text-slate-500 mt-1 font-bold">({daysInYear().passed} days complete)</p>
               </div>
             </div>
             
@@ -205,27 +191,16 @@ const App: React.FC = () => {
               <div className="space-y-6 pb-24 lg:pb-0">
                 <div className="flex justify-between items-start">
                     <Button variant="ghost" onClick={() => {setSelectedProjectId(null); setIsEditingName(false);}} className="p-0 text-orange-400">← Back</Button>
-                    <button onClick={() => deleteProject(activeP.id)} className="text-slate-600 hover:text-rose-500 transition-colors text-sm">Delete Project</button>
+                    <button onClick={() => {if(window.confirm("Delete project?")){supabase.from('projects').delete().eq('id', activeP.id).then(()=>loadData()); setSelectedProjectId(null);}}} className="text-slate-600 hover:text-rose-500 transition-colors text-sm">Delete Project</button>
                 </div>
                 
-                {/* PROJECT NAME / EDITABLE FIELD */}
                 <div className="flex items-center gap-4 group">
                     <div className="w-3 h-10 rounded-full" style={{ backgroundColor: activeP.color }}></div>
                     {isEditingName ? (
-                        <input 
-                          autoFocus
-                          className="bg-white/5 border-b-2 border-orange-500 text-3xl font-bold outline-none px-2 py-1 w-full"
-                          value={editedName}
-                          onChange={(e) => setEditedName(e.target.value)}
-                          onBlur={() => updateProjectName(activeP.id)}
-                          onKeyDown={(e) => e.key === 'Enter' && updateProjectName(activeP.id)}
-                        />
+                        <input autoFocus className="bg-white/5 border-b-2 border-orange-500 text-3xl font-bold outline-none px-2 py-1 w-full" value={editedName} onChange={(e) => setEditedName(e.target.value)} onBlur={() => updateProjectName(activeP.id)} onKeyDown={(e) => e.key === 'Enter' && updateProjectName(activeP.id)} />
                     ) : (
-                        <h2 
-                          className="text-3xl font-bold cursor-pointer hover:text-orange-400 transition-colors flex items-center gap-3"
-                          onClick={() => { setIsEditingName(true); setEditedName(activeP.name); }}
-                        >
-                            {activeP.name} <span className="text-xs text-slate-600 opacity-0 group-hover:opacity-100">(click to edit)</span>
+                        <h2 className="text-3xl font-bold cursor-pointer hover:text-orange-400 transition-colors flex items-center gap-3" onClick={() => { setIsEditingName(true); setEditedName(activeP.name); }}>
+                            {activeP.name} <span className="text-[10px] text-slate-600 opacity-50">(edit)</span>
                         </h2>
                     )}
                 </div>
@@ -243,9 +218,9 @@ const App: React.FC = () => {
 
                 <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl">
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
+                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none text-white" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
                     <div className="flex gap-2">
-                      <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
+                      <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
                       <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
                     </div>
                   </div>
@@ -270,12 +245,11 @@ const App: React.FC = () => {
 
         {activeView === 'calendar' && <Calendar projects={projects} />}
         {activeView === 'chat' && (
-           /* AI Chat code same as before */
            <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-180px)] lg:h-[75vh] bg-black/20 rounded-3xl border border-white/10 p-4 relative">
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
               {chatHistory.map(m => (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600' : 'bg-white/5 border border-white/10'}`}>
+                  <div className={`p-4 rounded-2xl max-w-[85%] text-sm ${m.role === 'user' ? 'bg-orange-600 shadow-lg' : 'bg-white/5 border border-white/10'}`}>
                     {m.text}
                   </div>
                 </div>
@@ -283,14 +257,13 @@ const App: React.FC = () => {
               <div ref={chatEndRef} />
             </div>
             <div className="flex gap-2">
-              <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} />
+              <input className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSendMessage()} placeholder="Ask AI..." />
               <Button className="bg-orange-600 px-6" onClick={handleSendMessage} disabled={isChatLoading}>Send</Button>
             </div>
           </div>
         )}
       </main>
 
-      {/* MOBILE NAV */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>
             <span className="text-xl">🏠</span><span className="text-[10px] font-bold">Dash</span>
@@ -306,7 +279,6 @@ const App: React.FC = () => {
         </button>
       </nav>
 
-      {/* ADD PROJECT MODAL */}
       {isAddingProject && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
           <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
