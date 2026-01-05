@@ -18,6 +18,8 @@ const App: React.FC = () => {
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
+  // New state for collapsible dashboard projects
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
   const getTodayString = () => {
     const d = new Date();
@@ -29,10 +31,8 @@ const App: React.FC = () => {
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // 1. Define activeP first
   const activeP = projects.find(p => p.id === selectedProjectId);
 
-  // 2. Stats Logic
   const daysInYear = () => {
     const now = new Date();
     const start = new Date(now.getFullYear(), 0, 1);
@@ -42,7 +42,6 @@ const App: React.FC = () => {
     return { left: total - passed, passed };
   };
 
-  // 3. Data Loading
   const loadData = async () => {
     const { data, error } = await supabase.from('projects').select('*');
     if (!error && data) { 
@@ -59,7 +58,10 @@ const App: React.FC = () => {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory]);
 
-  // 4. Interaction Logic
+  const toggleProjectExpand = (projectId: string) => {
+    setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }));
+  };
+
   const updateProjectName = async (pid: string) => {
     if (!editedName.trim()) { setIsEditingName(false); return; }
     const { error } = await supabase.from('projects').update({ name: editedName }).eq('id', pid);
@@ -99,7 +101,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#0f172a] text-white font-sans pb-20 lg:pb-0">
-      {/* DESKTOP SIDEBAR */}
       <aside className="hidden lg:flex w-72 bg-black/20 p-6 flex-col gap-8 border-r border-white/5">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
@@ -114,7 +115,6 @@ const App: React.FC = () => {
         </nav>
       </aside>
 
-      {/* MOBILE HEADER */}
       <header className="lg:hidden p-4 border-b border-white/5 bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-40 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-rose-400 bg-clip-text text-transparent">Z's Flow</h1>
@@ -146,19 +146,31 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {projects.map(p => p.tasks.filter(t => !t.isCompleted).length > 0 && (
-                <div key={p.id} className="bg-white/5 p-6 rounded-2xl border border-white/10">
-                  <h3 className="font-bold mb-4 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span> {p.name}
-                  </h3>
-                  <div className="space-y-2">
-                    {p.tasks.filter(t => !t.isCompleted).slice(0, 3).map(t => (
-                      <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
-                    ))}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {projects.map(p => {
+                const pendingTasks = p.tasks.filter(t => !t.isCompleted);
+                if (pendingTasks.length === 0) return null;
+                const isExpanded = expandedProjects[p.id];
+                return (
+                  <div key={p.id} className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden transition-all duration-300">
+                    <button onClick={() => toggleProjectExpand(p.id)} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                      <div className="flex items-center gap-3">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
+                        <h3 className="font-bold text-sm tracking-tight">{p.name}</h3>
+                        <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded-full">{pendingTasks.length} tasks</span>
+                      </div>
+                      <span className={`text-slate-500 text-xs transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                    </button>
+                    <div className={`transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[500px] opacity-100 border-t border-white/5' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                      <div className="p-4 pt-2 space-y-2">
+                        {pendingTasks.slice(0, 5).map(t => (
+                          <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -168,7 +180,6 @@ const App: React.FC = () => {
             {activeP ? (
               <div className="space-y-6 pb-24 lg:pb-0">
                 <Button variant="ghost" onClick={() => {setSelectedProjectId(null); setIsEditingName(false);}} className="p-0 text-orange-400">← Back</Button>
-                
                 <div className="flex items-center gap-4 group">
                     <div className="w-3 h-10 rounded-full" style={{ backgroundColor: activeP.color }}></div>
                     {isEditingName ? (
@@ -179,23 +190,20 @@ const App: React.FC = () => {
                         </h2>
                     )}
                 </div>
-
                 <div className="flex gap-4 border-b border-white/10">
                     <button onClick={() => setTaskTab('pending')} className={`pb-2 text-sm font-bold ${taskTab === 'pending' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-slate-500'}`}>To Do</button>
                     <button onClick={() => setTaskTab('completed')} className={`pb-2 text-sm font-bold ${taskTab === 'completed' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Done</button>
                 </div>
-
                 <div className="space-y-2">
                   {activeP.tasks.filter(t => taskTab === 'pending' ? !t.isCompleted : t.isCompleted).map(t => (
                       <TaskItem key={t.id} task={t} projectColor={activeP.color} onToggle={(id) => toggleTask(activeP.id, id)} onDelete={(id) => deleteTask(activeP.id, id)} />
                   ))}
                 </div>
-
-                <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10">
+                <div className="fixed bottom-[4.5rem] left-4 right-4 lg:relative lg:bottom-0 lg:left-0 lg:right-0 bg-slate-900 lg:bg-white/5 p-4 rounded-2xl border border-white/10 shadow-2xl">
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
+                    <input className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none text-white" value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="New task..." />
                     <div className="flex gap-2">
-                      <input type="date" className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
+                      <input type="date" className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white" value={newTaskDate} onChange={e => setNewTaskDate(e.target.value)} />
                       <Button className="bg-orange-600 px-8" onClick={() => addTask(activeP.id)}>Add</Button>
                     </div>
                   </div>
@@ -208,7 +216,7 @@ const App: React.FC = () => {
                     <div className="w-2 h-full" style={{ backgroundColor: p.color }}></div>
                     <div className="px-4 flex flex-1 justify-between items-center">
                       <h3 className="font-bold text-base truncate pr-2">{p.name}</h3>
-                      <p className="text-slate-500 text-[10px]">{p.tasks.filter(t => !t.isCompleted).length} left</p>
+                      <p className="text-slate-500 text-[10px] whitespace-nowrap">{p.tasks.filter(t => !t.isCompleted).length} left</p>
                     </div>
                   </button>
                 ))}
@@ -219,10 +227,9 @@ const App: React.FC = () => {
         )}
 
         {activeView === 'calendar' && <Calendar projects={projects} />}
-        {activeView === 'chat' && <div className="p-10 text-center text-slate-500">AI Chat is ready.</div>}
+        {activeView === 'chat' && <div className="p-10 text-center text-slate-500">AI Chat Ready.</div>}
       </main>
 
-      {/* MOBILE NAV */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-8 py-3 flex justify-between items-center z-50">
         <button onClick={() => setActiveView('dashboard')} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
         <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>📁<span className="text-[10px]">Projects</span></button>
@@ -230,12 +237,11 @@ const App: React.FC = () => {
         <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>🤖<span className="text-[10px]">AI</span></button>
       </nav>
 
-      {/* ADD PROJECT MODAL */}
       {isAddingProject && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-6 z-[100]">
           <div className="bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/10">
             <h3 className="text-2xl font-bold mb-4">New Project</h3>
-            <input className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 mb-4 outline-none" placeholder="Project Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
+            <input className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 mb-4 outline-none text-white" placeholder="Project Name" value={newProject.name} onChange={e => setNewProject({...newProject, name: e.target.value})} />
             <div className="flex justify-between mb-8 px-2">
                 {PROJECT_COLORS.map(c => <button key={c.hex} onClick={() => setNewProject({...newProject, color: c.hex})} className={`w-8 h-8 rounded-full ${newProject.color === c.hex ? 'ring-4 ring-white' : 'opacity-40'}`} style={{ backgroundColor: c.hex }} />)}
             </div>
