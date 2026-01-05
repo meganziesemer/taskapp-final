@@ -41,12 +41,14 @@ const App: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const activeP = projects.find(p => p.id === selectedProjectId);
 
+  // Updated for 2026
   const daysInYear = () => {
     const now = new Date();
-    const start = new Date(2025, 0, 1);
-    const end = new Date(2025, 11, 31);
+    const start = new Date(2026, 0, 1);
+    const end = new Date(2026, 11, 31);
     const total = 365;
-    const passed = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const diffTime = now.getTime() - start.getTime();
+    const passed = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
     return { left: Math.max(0, total - passed), passed: Math.max(0, passed) };
   };
 
@@ -70,10 +72,10 @@ const App: React.FC = () => {
     return 'bg-emerald-500';
   };
 
-  // Fixed 2025 Grid Logic
+  // Fixed 2026 Grid Logic
   const getHeatmapData = () => {
     const days = [];
-    const start = new Date(2025, 0, 1); // Jan 1st 2025
+    const start = new Date(2026, 0, 1); 
     for (let i = 0; i < 365; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
@@ -107,7 +109,6 @@ const App: React.FC = () => {
     if (!error) { setNewHabitName(''); loadData(); }
   };
 
-  // Toggle for specific dates (Back-logging support)
   const toggleHabitDate = async (habit: Habit, dateStr: string) => {
     let dates = habit.completed_dates || [];
     dates = dates.includes(dateStr) ? dates.filter(d => d !== dateStr) : [...dates, dateStr];
@@ -138,7 +139,7 @@ const App: React.FC = () => {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-      const systemInstruction = `Assistant for Z's Flow. Data: ${JSON.stringify(projects)}.`;
+      const systemInstruction = `Assistant for Z's Flow. Data: ${JSON.stringify(projects)}. User is in 2026.`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -219,7 +220,7 @@ const App: React.FC = () => {
                 <p className="text-3xl font-bold mt-1">{projects.reduce((acc, p) => acc + (p.tasks || []).filter(t => !t.isCompleted).length, 0)}</p>
               </div>
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10 text-center text-orange-400">
-                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days in 2025</h4>
+                <h4 className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Days in 2026</h4>
                 <p className="text-3xl font-bold mt-1">{daysInYear().passed}</p>
                 <p className="text-[10px] text-slate-500 mt-1">({daysInYear().left} remaining)</p>
               </div>
@@ -227,7 +228,7 @@ const App: React.FC = () => {
 
             <div className="bg-white/5 p-6 rounded-3xl border border-white/10">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-500">2025 Habit Grid</h3>
+                <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-500">2026 Habit Grid</h3>
                 <div className="flex gap-2 items-center text-[8px] uppercase tracking-tighter text-slate-600 font-bold">
                   <span>Less</span>
                   <div className="w-2 h-2 rounded-sm bg-rose-500"></div>
@@ -354,7 +355,6 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {/* Back-logging Date Picker */}
                     <input type="date" className="bg-white/5 border border-white/10 rounded px-2 py-1 text-[10px] opacity-0 group-hover:opacity-100 transition-all cursor-pointer" onChange={(e) => toggleHabitDate(h, e.target.value)} title="Log for past date" />
                     <button onClick={() => toggleHabitDate(h, today)} className={`w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all ${h.completed_dates?.includes(today) ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-white/10 text-transparent'}`}>✓</button>
                   </div>
@@ -383,7 +383,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Mobile Nav */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-6 py-3 flex justify-between items-center z-50">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
         <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>📁<span className="text-[10px]">Proj</span></button>
