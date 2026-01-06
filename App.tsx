@@ -128,9 +128,23 @@ const App: React.FC = () => {
     }
   };
 
-  const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
-    await supabase.from('projects').update({ status: newStatus }).eq('id', pid);
-    loadData();
+const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
+    // 1. Update UI immediately (Optimistic Update)
+    setProjects(currentProjects => 
+      currentProjects.map(p => p.id === pid ? { ...p, status: newStatus } : p)
+    );
+
+    // 2. Update Database
+    const { error } = await supabase
+      .from('projects')
+      .update({ status: newStatus })
+      .eq('id', pid);
+
+    if (error) {
+      console.error("Error updating status:", error);
+      // Revert if database fails
+      loadData();
+    }
   };
 
   const handleSendMessage = async () => {
