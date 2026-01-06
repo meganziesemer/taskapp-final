@@ -129,7 +129,6 @@ const App: React.FC = () => {
   };
 
   const toggleProjectStatus = async (pid: string, currentStatus: string | undefined) => {
-    // Corrected logic: explicitly switch between the two states
     const newStatus = currentStatus === 'needs_action' ? 'caught_up' : 'needs_action';
     await supabase.from('projects').update({ status: newStatus }).eq('id', pid);
     loadData();
