@@ -41,7 +41,6 @@ const App: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const activeP = projects.find(p => p.id === selectedProjectId);
 
-  // Updated for 2026
   const daysInYear = () => {
     const now = new Date();
     const start = new Date(2026, 0, 1);
@@ -72,7 +71,6 @@ const App: React.FC = () => {
     return 'bg-emerald-500';
   };
 
-  // Fixed 2026 Grid Logic
   const getHeatmapData = () => {
     const days = [];
     const start = new Date(2026, 0, 1); 
@@ -130,6 +128,12 @@ const App: React.FC = () => {
     }
   };
 
+  const toggleProjectStatus = async (pid: string, currentStatus: string | undefined) => {
+    const newStatus = currentStatus === 'needs_action' ? 'caught_up' : 'needs_action';
+    await supabase.from('projects').update({ status: newStatus }).eq('id', pid);
+    loadData();
+  };
+
   const handleSendMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
     const userMsg = { id: crypto.randomUUID(), role: 'user', text: chatInput, timestamp: new Date().toISOString() };
@@ -182,7 +186,7 @@ const App: React.FC = () => {
 
   const addProject = async () => {
     if (!newProject.name) return;
-    const project = { id: crypto.randomUUID(), name: newProject.name, description: '', color: newProject.color, createdAt: new Date().toISOString(), tasks: [] };
+    const project = { id: crypto.randomUUID(), name: newProject.name, description: '', color: newProject.color, createdAt: new Date().toISOString(), tasks: [], status: 'caught_up' };
     await supabase.from('projects').insert([project]);
     setIsAddingProject(false); setNewProject({ name: '', description: '', color: PROJECT_COLORS[0].hex }); loadData();
   };
@@ -265,15 +269,23 @@ const App: React.FC = () => {
                 if (pendingTasks.length === 0) return null;
                 const isExpanded = expandedProjects[p.id];
                 return (
-                  <div key={p.id} className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
-                    <button onClick={() => setExpandedProjects(prev => ({ ...prev, [p.id]: !prev[p.id] }))} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] text-left">
+                  /* DASHBOARD CARD - Updated with status background and navigation */
+                  <div key={p.id} className={`rounded-2xl border overflow-hidden transition-all ${
+                    (p as any).status === 'needs_action' 
+                      ? 'bg-rose-950/30 border-rose-500/30' 
+                      : (p as any).status === 'caught_up' 
+                        ? 'bg-emerald-950/30 border-emerald-500/30'
+                        : 'bg-white/5 border-white/10'
+                  }`}>
+                    <button onClick={() => { setActiveView('projects'); setSelectedProjectId(p.id); }} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] text-left">
                       <div className="flex items-center gap-3">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
                         <h3 className="font-bold text-sm">{p.name}</h3>
                       </div>
-                      <span className={`text-slate-500 text-xs ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+                      <span className={`text-slate-500 text-xs`}>→</span>
                     </button>
-                    <div className={`${isExpanded ? 'block' : 'hidden'} p-4 pt-0 space-y-2`}>
+                    {/* Keep tasks visible on dashboard for quick glance */}
+                    <div className="p-4 pt-0 space-y-2">
                         {pendingTasks.slice(0, 5).map(t => (
                           <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
                         ))}
@@ -291,7 +303,19 @@ const App: React.FC = () => {
               <div className="space-y-6 pb-24 lg:pb-0">
                 <div className="flex justify-between items-center">
                   <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400">← Back</Button>
-                  <button onClick={() => deleteProject(activeP.id)} className="text-[10px] text-slate-600 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 uppercase font-bold">Delete Project</button>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => toggleProjectStatus(activeP.id, (activeP as any).status)}
+                      className={`text-[9px] font-black px-3 py-1.5 rounded-full border transition-all uppercase tracking-tighter ${
+                        (activeP as any).status === 'needs_action' 
+                        ? 'bg-rose-500/20 border-rose-500 text-rose-500' 
+                        : 'bg-emerald-500/20 border-emerald-500 text-emerald-500'
+                      }`}
+                    >
+                      {(activeP as any).status === 'needs_action' ? 'Needs Action' : 'Caught Up'}
+                    </button>
+                    <button onClick={() => deleteProject(activeP.id)} className="text-[10px] text-slate-600 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 uppercase font-bold">Delete Project</button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="w-3 h-10 rounded-full" style={{ backgroundColor: activeP.color }}></div>
@@ -323,7 +347,17 @@ const App: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {projects.map(p => (
-                  <button key={p.id} onClick={() => setSelectedProjectId(p.id)} className="bg-white/5 h-16 rounded-2xl border border-white/10 text-left hover:border-orange-500/30 flex items-center overflow-hidden">
+                  <button 
+                    key={p.id} 
+                    onClick={() => setSelectedProjectId(p.id)} 
+                    className={`h-16 rounded-2xl border flex items-center overflow-hidden transition-all text-left ${
+                      (p as any).status === 'needs_action' 
+                      ? 'bg-rose-950/30 border-rose-500/30 hover:border-rose-500' 
+                      : (p as any).status === 'caught_up' 
+                        ? 'bg-emerald-950/30 border-emerald-500/30 hover:border-emerald-500'
+                        : 'bg-white/5 border-white/10 hover:border-orange-500/30'
+                    }`}
+                  >
                     <div className="w-2 h-full" style={{ backgroundColor: p.color }}></div>
                     <div className="px-4 flex flex-1 justify-between items-center truncate">
                       <h3 className="font-bold text-base truncate pr-2">{p.name}</h3>
