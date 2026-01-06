@@ -129,6 +129,7 @@ const App: React.FC = () => {
   };
 
   const toggleProjectStatus = async (pid: string, currentStatus: string | undefined) => {
+    // Corrected logic: explicitly switch between the two states
     const newStatus = currentStatus === 'needs_action' ? 'caught_up' : 'needs_action';
     await supabase.from('projects').update({ status: newStatus }).eq('id', pid);
     loadData();
@@ -269,7 +270,6 @@ const App: React.FC = () => {
                 if (pendingTasks.length === 0) return null;
                 const isExpanded = expandedProjects[p.id];
                 return (
-                  /* DASHBOARD CARD - Updated with status background and navigation */
                   <div key={p.id} className={`rounded-2xl border overflow-hidden transition-all ${
                     (p as any).status === 'needs_action' 
                       ? 'bg-rose-950/30 border-rose-500/30' 
@@ -280,11 +280,15 @@ const App: React.FC = () => {
                     <button onClick={() => { setActiveView('projects'); setSelectedProjectId(p.id); }} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] text-left">
                       <div className="flex items-center gap-3">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
-                        <h3 className="font-bold text-sm">{p.name}</h3>
+                        <div>
+                          <h3 className="font-bold text-sm">{p.name}</h3>
+                          <p className={`text-[9px] font-bold uppercase tracking-tighter ${(p as any).status === 'needs_action' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {(p as any).status === 'needs_action' ? 'Needs Action' : 'Caught Up'}
+                          </p>
+                        </div>
                       </div>
                       <span className={`text-slate-500 text-xs`}>→</span>
                     </button>
-                    {/* Keep tasks visible on dashboard for quick glance */}
                     <div className="p-4 pt-0 space-y-2">
                         {pendingTasks.slice(0, 5).map(t => (
                           <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
@@ -350,7 +354,7 @@ const App: React.FC = () => {
                   <button 
                     key={p.id} 
                     onClick={() => setSelectedProjectId(p.id)} 
-                    className={`h-16 rounded-2xl border flex items-center overflow-hidden transition-all text-left ${
+                    className={`h-20 rounded-2xl border flex items-center overflow-hidden transition-all text-left ${
                       (p as any).status === 'needs_action' 
                       ? 'bg-rose-950/30 border-rose-500/30 hover:border-rose-500' 
                       : (p as any).status === 'caught_up' 
@@ -360,12 +364,17 @@ const App: React.FC = () => {
                   >
                     <div className="w-2 h-full" style={{ backgroundColor: p.color }}></div>
                     <div className="px-4 flex flex-1 justify-between items-center truncate">
-                      <h3 className="font-bold text-base truncate pr-2">{p.name}</h3>
+                      <div>
+                        <h3 className="font-bold text-base truncate pr-2">{p.name}</h3>
+                        <p className={`text-[10px] font-bold uppercase tracking-tight ${(p as any).status === 'needs_action' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {(p as any).status === 'needs_action' ? 'Needs Action' : 'Caught Up'}
+                        </p>
+                      </div>
                       <p className="text-slate-500 text-[10px]">{(p.tasks || []).filter(t => !t.isCompleted).length} left</p>
                     </div>
                   </button>
                 ))}
-                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/5 h-16 rounded-2xl text-slate-500 flex items-center justify-center gap-2 text-sm">+ New Project</button>
+                <button onClick={() => setIsAddingProject(true)} className="border-2 border-dashed border-white/5 h-20 rounded-2xl text-slate-500 flex items-center justify-center gap-2 text-sm">+ New Project</button>
               </div>
             )}
           </div>
