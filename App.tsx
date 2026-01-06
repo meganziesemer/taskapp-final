@@ -128,8 +128,7 @@ const App: React.FC = () => {
     }
   };
 
-  const toggleProjectStatus = async (pid: string, currentStatus: string | undefined) => {
-    const newStatus = currentStatus === 'needs_action' ? 'caught_up' : 'needs_action';
+  const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
     await supabase.from('projects').update({ status: newStatus }).eq('id', pid);
     loadData();
   };
@@ -307,16 +306,29 @@ const App: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400">← Back</Button>
                   <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => toggleProjectStatus(activeP.id, (activeP as any).status)}
-                      className={`text-[9px] font-black px-3 py-1.5 rounded-full border transition-all uppercase tracking-tighter ${
-                        (activeP as any).status === 'needs_action' 
-                        ? 'bg-rose-500/20 border-rose-500 text-rose-500' 
-                        : 'bg-emerald-500/20 border-emerald-500 text-emerald-500'
-                      }`}
-                    >
-                      {(activeP as any).status === 'needs_action' ? 'Needs Action' : 'Caught Up'}
-                    </button>
+                    {/* Updated Status Toggles */}
+                    <div className="flex bg-white/5 p-1 rounded-full border border-white/5">
+                      <button 
+                        onClick={() => setProjectStatus(activeP.id, 'needs_action')}
+                        className={`text-[9px] font-black px-3 py-1.5 rounded-full transition-all uppercase tracking-tighter ${
+                          (activeP as any).status === 'needs_action' 
+                          ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' 
+                          : 'text-slate-500 hover:text-rose-400'
+                        }`}
+                      >
+                        Needs Action
+                      </button>
+                      <button 
+                        onClick={() => setProjectStatus(activeP.id, 'caught_up')}
+                        className={`text-[9px] font-black px-3 py-1.5 rounded-full transition-all uppercase tracking-tighter ${
+                          (activeP as any).status === 'caught_up' 
+                          ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' 
+                          : 'text-slate-500 hover:text-emerald-400'
+                        }`}
+                      >
+                        Caught Up
+                      </button>
+                    </div>
                     <button onClick={() => deleteProject(activeP.id)} className="text-[10px] text-slate-600 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 uppercase font-bold">Delete Project</button>
                   </div>
                 </div>
