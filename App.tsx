@@ -128,13 +128,10 @@ const App: React.FC = () => {
     }
   };
 
-const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
-    // 1. Update UI immediately (Optimistic Update)
+  const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
     setProjects(currentProjects => 
       currentProjects.map(p => p.id === pid ? { ...p, status: newStatus } : p)
     );
-
-    // 2. Update Database
     const { error } = await supabase
       .from('projects')
       .update({ status: newStatus })
@@ -142,7 +139,6 @@ const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught
 
     if (error) {
       console.error("Error updating status:", error);
-      // Revert if database fails
       loadData();
     }
   };
@@ -289,8 +285,8 @@ const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught
                         ? 'bg-emerald-950/30 border-emerald-500/30'
                         : 'bg-white/5 border-white/10'
                   }`}>
-                    <button onClick={() => { setActiveView('projects'); setSelectedProjectId(p.id); }} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] text-left">
-                      <div className="flex items-center gap-3">
+                    <div className="w-full flex items-center justify-between hover:bg-white/[0.02]">
+                      <button onClick={() => { setActiveView('projects'); setSelectedProjectId(p.id); }} className="flex-1 p-5 flex items-center gap-3 text-left">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
                         <div>
                           <h3 className="font-bold text-sm">{p.name}</h3>
@@ -298,14 +294,25 @@ const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught
                             {(p as any).status === 'needs_action' ? 'Needs Action' : 'Caught Up'}
                           </p>
                         </div>
-                      </div>
-                      <span className={`text-slate-500 text-xs`}>→</span>
-                    </button>
-                    <div className="p-4 pt-0 space-y-2">
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedProjects(prev => ({ ...prev, [p.id]: !prev[p.id] }));
+                        }}
+                        className="p-5 text-slate-500 hover:text-white transition-transform duration-200"
+                        style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                      >
+                        <span className="text-xs">→</span>
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="p-4 pt-0 space-y-2 border-t border-white/5 bg-black/10">
                         {pendingTasks.slice(0, 5).map(t => (
                           <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
                         ))}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -320,7 +327,6 @@ const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught
                 <div className="flex justify-between items-center">
                   <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400">← Back</Button>
                   <div className="flex items-center gap-2">
-                    {/* Updated Status Toggles */}
                     <div className="flex bg-white/5 p-1 rounded-full border border-white/5">
                       <button 
                         onClick={() => setProjectStatus(activeP.id, 'needs_action')}
