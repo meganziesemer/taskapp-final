@@ -86,7 +86,16 @@ const App: React.FC = () => {
 
   const loadData = async () => {
     const { data: pData } = await supabase.from('projects').select('*');
-    if (pData) setProjects([...pData].sort((a, b) => a.name.localeCompare(b.name)));
+    if (pData) {
+      const sorted = [...pData].sort((a, b) => {
+        // Primary sort: Status (Reverse alphabetical so 'needs_action' (n) comes before 'caught_up' (c))
+        const statusSort = (b.status || '').localeCompare(a.status || '');
+        if (statusSort !== 0) return statusSort;
+        // Secondary sort: Name alphabetical
+        return a.name.localeCompare(b.name);
+      });
+      setProjects(sorted);
+    }
     const { data: hData } = await supabase.from('habits').select('*');
     if (hData) setHabits(hData);
   };
@@ -128,10 +137,13 @@ const App: React.FC = () => {
     }
   };
 
-  const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
+const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
+    // 1. Update UI immediately (Optimistic Update)
     setProjects(currentProjects => 
       currentProjects.map(p => p.id === pid ? { ...p, status: newStatus } : p)
     );
+
+    // 2. Update Database
     const { error } = await supabase
       .from('projects')
       .update({ status: newStatus })
@@ -139,6 +151,7 @@ const App: React.FC = () => {
 
     if (error) {
       console.error("Error updating status:", error);
+      // Revert if database fails
       loadData();
     }
   };
@@ -285,8 +298,8 @@ const App: React.FC = () => {
                         ? 'bg-emerald-950/30 border-emerald-500/30'
                         : 'bg-white/5 border-white/10'
                   }`}>
-                    <div className="w-full flex items-center justify-between hover:bg-white/[0.02]">
-                      <button onClick={() => { setActiveView('projects'); setSelectedProjectId(p.id); }} className="flex-1 p-5 flex items-center gap-3 text-left">
+                    <button onClick={() => { setActiveView('projects'); setSelectedProjectId(p.id); }} className="w-full p-5 flex items-center justify-between hover:bg-white/[0.02] text-left">
+                      <div className="flex items-center gap-3">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
                         <div>
                           <h3 className="font-bold text-sm">{p.name}</h3>
@@ -294,25 +307,14 @@ const App: React.FC = () => {
                             {(p as any).status === 'needs_action' ? 'Needs Action' : 'Caught Up'}
                           </p>
                         </div>
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setExpandedProjects(prev => ({ ...prev, [p.id]: !prev[p.id] }));
-                        }}
-                        className="p-5 text-slate-500 hover:text-white transition-transform duration-200"
-                        style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                      >
-                        <span className="text-xs">→</span>
-                      </button>
-                    </div>
-                    {isExpanded && (
-                      <div className="p-4 pt-0 space-y-2 border-t border-white/5 bg-black/10">
+                      </div>
+                      <span className={`text-slate-500 text-xs`}>→</span>
+                    </button>
+                    <div className="p-4 pt-0 space-y-2">
                         {pendingTasks.slice(0, 5).map(t => (
                           <TaskItem key={t.id} task={t} projectColor={p.color} onToggle={() => toggleTask(p.id, t.id)} onDelete={() => deleteTask(p.id, t.id)} />
                         ))}
-                      </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
@@ -327,6 +329,7 @@ const App: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <Button variant="ghost" onClick={() => setSelectedProjectId(null)} className="p-0 text-orange-400">← Back</Button>
                   <div className="flex items-center gap-2">
+                    {/* Updated Status Toggles */}
                     <div className="flex bg-white/5 p-1 rounded-full border border-white/5">
                       <button 
                         onClick={() => setProjectStatus(activeP.id, 'needs_action')}
