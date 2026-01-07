@@ -13,10 +13,13 @@ interface Habit {
   completed_dates: string[];
 }
 
+// New type for the schedule state
+type ScheduleData = Record<string, string>;
+
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]); 
-  const [activeView, setActiveView] = useState<ViewType | 'habits'>('dashboard');
+  const [activeView, setActiveView] = useState<ViewType | 'habits' | 'schedule'>('dashboard');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
@@ -29,12 +32,54 @@ const App: React.FC = () => {
   const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
+  // --- Schedule Sync Logic ---
+  const [schedule, setSchedule] = useState<ScheduleData>({});
+  
   const getTodayString = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
-
   const today = getTodayString();
+
+  const loadSchedule = async () => {
+    const { data, error } = await supabase
+      .from('schedule')
+      .select('time_slot, activity')
+      .eq('date', today);
+    
+    if (data) {
+      const scheduleMap: ScheduleData = {};
+      data.forEach(item => {
+        scheduleMap[item.time_slot] = item.activity;
+      });
+      setSchedule(scheduleMap);
+    }
+  };
+
+  const updateSchedule = async (time: string, activity: string) => {
+    // Update local state immediately for speed
+    setSchedule(prev => ({ ...prev, [time]: activity }));
+
+    // Upsert to Supabase (Update if exists, Insert if not)
+    await supabase.from('schedule').upsert({
+      time_slot: time,
+      activity: activity,
+      date: today
+    }, { onConflict: 'time_slot, date' });
+  };
+
+  const generateTimeSlots = () => {
+    const slots = [];
+    for (let hour = 5; hour <= 22; hour++) {
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      slots.push(`${displayHour}:00 ${ampm}`);
+      if (hour !== 22) slots.push(`${displayHour}:30 ${ampm}`);
+    }
+    slots.push("10:30 PM");
+    return slots;
+  };
+
   const [newTaskDate, setNewTaskDate] = useState(today);
   const [newProject, setNewProject] = useState({ name: '', description: '', color: PROJECT_COLORS[0].hex });
   
@@ -88,16 +133,15 @@ const App: React.FC = () => {
     const { data: pData } = await supabase.from('projects').select('*');
     if (pData) {
       const sorted = [...pData].sort((a, b) => {
-        // Primary sort: Status (Needs Action before Caught Up)
         const statusSort = (b.status || '').localeCompare(a.status || '');
         if (statusSort !== 0) return statusSort;
-        // Secondary sort: Name alphabetical
         return a.name.localeCompare(b.name);
       });
       setProjects(sorted);
     }
     const { data: hData } = await supabase.from('habits').select('*');
     if (hData) setHabits(hData);
+    loadSchedule(); // Also load the schedule
   };
 
   useEffect(() => {
@@ -137,7 +181,7 @@ const App: React.FC = () => {
     }
   };
 
-const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
+  const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught_up') => {
     setProjects(currentProjects => 
       currentProjects.map(p => p.id === pid ? { ...p, status: newStatus } : p)
     );
@@ -216,7 +260,7 @@ const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught
           <p className="text-[10px] text-slate-500 font-medium italic">make every day count</p>
         </div>
         <nav className="flex flex-col gap-2">
-          {['dashboard', 'projects', 'habits', 'calendar', 'chat'].map((v) => (
+          {['dashboard', 'schedule', 'projects', 'habits', 'calendar', 'chat'].map((v) => (
             <Button key={v} variant="ghost" onClick={() => {setActiveView(v as any); setSelectedProjectId(null);}} className={`justify-start capitalize ${activeView === v ? 'bg-orange-600' : ''}`}>
               {v}
             </Button>
@@ -337,6 +381,35 @@ const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught
                   </React.Fragment>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* --- Schedule Tab UI --- */}
+        {activeView === 'schedule' && (
+          <div className="max-w-2xl mx-auto space-y-6 pb-20">
+            <div className="flex justify-between items-end">
+                <div>
+                    <h2 className="text-3xl font-bold">Daily Block</h2>
+                    <p className="text-orange-400 text-[10px] font-bold uppercase tracking-widest mt-1">Synced across devices</p>
+                </div>
+                <p className="text-slate-500 text-xs font-bold">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            </div>
+            
+            <div className="bg-white/5 rounded-3xl border border-white/10 overflow-hidden">
+              {generateTimeSlots().map((time) => (
+                <div key={time} className="flex border-b border-white/5 last:border-0 group">
+                  <div className="w-24 p-4 text-[10px] font-bold text-slate-500 border-r border-white/5 bg-black/10 flex items-center justify-center">
+                    {time}
+                  </div>
+                  <input 
+                    className="flex-1 bg-transparent px-6 py-4 text-sm outline-none focus:bg-white/[0.02] transition-colors"
+                    placeholder="---"
+                    value={schedule[time] || ''}
+                    onChange={(e) => updateSchedule(time, e.target.value)}
+                  />
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -472,12 +545,14 @@ const setProjectStatus = async (pid: string, newStatus: 'needs_action' | 'caught
         )}
       </main>
 
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-6 py-3 flex justify-between items-center z-50">
-        <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
-        <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>📁<span className="text-[10px]">Proj</span></button>
-        <button onClick={() => setActiveView('habits')} className={`flex flex-col items-center gap-1 ${activeView === 'habits' ? 'text-orange-400' : 'text-slate-500'}`}>⚡<span className="text-[10px]">Habit</span></button>
-        <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>📅<span className="text-[10px]">Cal</span></button>
-        <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>🤖<span className="text-[10px]">AI</span></button>
+      {/* Mobile Nav with Time/Schedule Button */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-6 py-3 flex justify-between items-center z-50 overflow-x-auto gap-6">
+        <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 min-w-fit ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
+        <button onClick={() => setActiveView('schedule')} className={`flex flex-col items-center gap-1 min-w-fit ${activeView === 'schedule' ? 'text-orange-400' : 'text-slate-500'}`}>⏱️<span className="text-[10px]">Time</span></button>
+        <button onClick={() => setActiveView('projects')} className={`flex flex-col items-center gap-1 min-w-fit ${activeView === 'projects' ? 'text-orange-400' : 'text-slate-500'}`}>📁<span className="text-[10px]">Proj</span></button>
+        <button onClick={() => setActiveView('habits')} className={`flex flex-col items-center gap-1 min-w-fit ${activeView === 'habits' ? 'text-orange-400' : 'text-slate-500'}`}>⚡<span className="text-[10px]">Habit</span></button>
+        <button onClick={() => setActiveView('calendar')} className={`flex flex-col items-center gap-1 min-w-fit ${activeView === 'calendar' ? 'text-orange-400' : 'text-slate-500'}`}>📅<span className="text-[10px]">Cal</span></button>
+        <button onClick={() => setActiveView('chat')} className={`flex flex-col items-center gap-1 min-w-fit ${activeView === 'chat' ? 'text-orange-400' : 'text-slate-500'}`}>🤖<span className="text-[10px]">AI</span></button>
       </nav>
 
       {isAddingProject && (
