@@ -61,11 +61,16 @@ const App: React.FC = () => {
     setSchedule(prev => ({ ...prev, [time]: activity }));
 
     // Upsert to Supabase (Update if exists, Insert if not)
-    await supabase.from('schedule').upsert({
+    // We explicitly tell Supabase to check for conflicts on 'time_slot' and 'date'
+    const { error } = await supabase.from('schedule').upsert({
       time_slot: time,
       activity: activity,
       date: today
     }, { onConflict: 'time_slot, date' });
+
+    if (error) {
+      console.error("Error saving schedule:", error.message);
+    }
   };
 
   const generateTimeSlots = () => {
@@ -141,7 +146,7 @@ const App: React.FC = () => {
     }
     const { data: hData } = await supabase.from('habits').select('*');
     if (hData) setHabits(hData);
-    loadSchedule(); // Also load the schedule
+    loadSchedule(); // Ensure schedule is part of the data reload
   };
 
   useEffect(() => {
