@@ -13,7 +13,6 @@ interface Habit {
   completed_dates: string[];
 }
 
-// New type for the schedule state
 type ScheduleData = Record<string, string>;
 
 const App: React.FC = () => {
@@ -33,19 +32,23 @@ const App: React.FC = () => {
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
   // --- Schedule Sync Logic ---
-  const [schedule, setSchedule] = useState<ScheduleData>({});
-  
   const getTodayString = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
+
+  const [selectedDate, setSelectedDate] = useState(getTodayString());
+  const [schedule, setSchedule] = useState<ScheduleData>({});
+  const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
   const today = getTodayString();
 
-  const loadSchedule = async () => {
+  const loadSchedule = async (dateToLoad: string) => {
     const { data, error } = await supabase
       .from('schedule')
       .select('time_slot, activity')
-      .eq('date', today);
+      .eq('date', dateToLoad);
     
     if (data) {
       const scheduleMap: ScheduleData = {};
@@ -53,24 +56,44 @@ const App: React.FC = () => {
         scheduleMap[item.time_slot] = item.activity;
       });
       setSchedule(scheduleMap);
+    } else {
+      setSchedule({});
     }
   };
 
-  const updateSchedule = async (time: string, activity: string) => {
-    // Update local state immediately for speed
+  // Change date handler
+  const adjustDate = (days: number) => {
+    const current = new Date(selectedDate + 'T00:00:00');
+    current.setDate(current.getDate() + days);
+    const newDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+    setSelectedDate(newDateStr);
+  };
+
+  // Reload schedule whenever the selectedDate changes
+  useEffect(() => {
+    loadSchedule(selectedDate);
+  }, [selectedDate]);
+
+  const updateSchedule = (time: string, activity: string) => {
     setSchedule(prev => ({ ...prev, [time]: activity }));
+    setSyncStatus('saving');
 
-    // Upsert to Supabase (Update if exists, Insert if not)
-    // We explicitly tell Supabase to check for conflicts on 'time_slot' and 'date'
-    const { error } = await supabase.from('schedule').upsert({
-      time_slot: time,
-      activity: activity,
-      date: today
-    }, { onConflict: 'time_slot, date' });
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    if (error) {
-      console.error("Error saving schedule:", error.message);
-    }
+    saveTimeoutRef.current = setTimeout(async () => {
+      const { error } = await supabase.from('schedule').upsert({
+        time_slot: time,
+        activity: activity,
+        date: selectedDate
+      }, { onConflict: 'time_slot, date' });
+
+      if (error) {
+        console.error("Error saving schedule:", error.message);
+        setSyncStatus('error');
+      } else {
+        setSyncStatus('saved');
+      }
+    }, 500);
   };
 
   const generateTimeSlots = () => {
@@ -94,7 +117,6 @@ const App: React.FC = () => {
   const daysInYear = () => {
     const now = new Date();
     const start = new Date(2026, 0, 1);
-    const end = new Date(2026, 11, 31);
     const total = 365;
     const diffTime = now.getTime() - start.getTime();
     const passed = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
@@ -146,7 +168,7 @@ const App: React.FC = () => {
     }
     const { data: hData } = await supabase.from('habits').select('*');
     if (hData) setHabits(hData);
-    loadSchedule(); // Ensure schedule is part of the data reload
+    loadSchedule(selectedDate);
   };
 
   useEffect(() => {
@@ -396,9 +418,23 @@ const App: React.FC = () => {
             <div className="flex justify-between items-end">
                 <div>
                     <h2 className="text-3xl font-bold">Daily Block</h2>
-                    <p className="text-orange-400 text-[10px] font-bold uppercase tracking-widest mt-1">Synced across devices</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-orange-400 text-[10px] font-bold uppercase tracking-widest">Synced</p>
+                      {syncStatus === 'saving' && <span className="text-[10px] text-slate-500 italic animate-pulse">Saving...</span>}
+                      {syncStatus === 'saved' && <span className="text-[10px] text-emerald-500 font-bold">✓ Saved</span>}
+                      {syncStatus === 'error' && <span className="text-[10px] text-rose-500 font-bold">⚠️ Connection Error</span>}
+                    </div>
                 </div>
-                <p className="text-slate-500 text-xs font-bold">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-4 bg-white/5 p-1 rounded-lg border border-white/5">
+                    <button onClick={() => adjustDate(-1)} className="p-1 hover:text-orange-400 transition-colors">←</button>
+                    <span className="text-xs font-bold w-28 text-center">{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    <button onClick={() => adjustDate(1)} className="p-1 hover:text-orange-400 transition-colors">→</button>
+                  </div>
+                  {selectedDate !== today && (
+                    <button onClick={() => setSelectedDate(today)} className="text-[8px] uppercase font-bold text-orange-400 hover:underline">Back to Today</button>
+                  )}
+                </div>
             </div>
             
             <div className="bg-white/5 rounded-3xl border border-white/10 overflow-hidden">
@@ -550,7 +586,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Mobile Nav with Time/Schedule Button */}
+      {/* Mobile Nav */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 px-6 py-3 flex justify-between items-center z-50 overflow-x-auto gap-6">
         <button onClick={() => {setActiveView('dashboard'); setSelectedProjectId(null);}} className={`flex flex-col items-center gap-1 min-w-fit ${activeView === 'dashboard' ? 'text-orange-400' : 'text-slate-500'}`}>🏠<span className="text-[10px]">Dash</span></button>
         <button onClick={() => setActiveView('schedule')} className={`flex flex-col items-center gap-1 min-w-fit ${activeView === 'schedule' ? 'text-orange-400' : 'text-slate-500'}`}>⏱️<span className="text-[10px]">Time</span></button>
